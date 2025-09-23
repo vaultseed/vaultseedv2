@@ -1,128 +1,141 @@
 const express = require('express');
-const mongoose = require('mongoose');
-const cors = require('cors');
-const compression = require('compression');
-const morgan = require('morgan');
-require('dotenv').config();
+const { body, validationResult } = require('express-validator');
+const Vault = require('../models/Vault');
+const { authenticateToken, logActivity } = require('../middleware/auth');
+const serverEncryption = require('../utils/encryption');
 
-// Import middleware
-const { 
-  generalLimiter, 
-  helmetConfig, 
-  sanitizeInput 
-} = require('./middleware/security');
+const router = express.Router();
 
-// Import routes
-const authRoutes = require('./routes/auth');
-const vaultRoutes = require('./routes/vault');
+// Validation rules
+const vaultValidation = [
+  body('encryptedData').notEmpty().withMessage('Encrypted data required'),
+  body('clientSalt').notEmpty().withMessage('Client salt required')
+];
 
-const app = express();
-const PORT = process.env.PORT || 3001;
-
-// Trust proxy (important for rate limiting and IP detection)
-app.set('trust proxy', 1);
-
-// Security middleware
-app.use(helmetConfig);
-app.use(generalLimiter);
-app.use(sanitizeInput);
-
-// CORS configuration
-const corsOptions = {
-  origin: function (origin, callback) {
-    const allowedOrigins = process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'];
+// Get user's vault
+router.get('/', authenticateToken, logActivity('VAULT_ACCESSED'), async (req, res) => {
+  try {
+    const vault = await Vault.findOne({ userId: req.user._id });
     
-    // Allow requests with no origin (mobile apps, etc.)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+    if (!vault) {
+      return res.status(404).json({ error: 'Vault not found' });
     }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-};
 
-app.use(cors(corsOptions));
+    // Update last accessed time
+    await vault.updateLastAccessed();
 
-// Body parsing middleware
-app.use(compression());
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+    res.json({
+      encryptedData: vault.encryptedData,
+      serverSalt: vault.serverSalt,
+      clientSalt: vault.clientSalt,
+      version: vault.version,
+      lastAccessed: vault.lastAccessed,
+      updatedAt: vault.updatedAt
+    });
 
-// Logging middleware
-if (process.env.NODE_ENV !== 'production') {
-  app.use(morgan('dev'));
-} else {
-  app.use(morgan('combined'));
-}
-
-// Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(() => {
-  console.log('✅ Connected to MongoDB');
-})
-.catch((error) => {
-  console.error('❌ MongoDB connection error:', error);
-  process.exit(1);
-});
-
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV
-  });
-});
-
-// API routes
-app.use('/api/auth', authRoutes);
-app.use('/api/vault', vaultRoutes);
-
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({ error: 'Endpoint not found' });
-});
-
-// Global error handler
-app.use((error, req, res, next) => {
-  console.error('Global error handler:', error);
-  
-  if (error.message === 'Not allowed by CORS') {
-    return res.status(403).json({ error: 'CORS policy violation' });
+  } catch (error) {
+    console.error('Get vault error:', error);
+    res.status(500).json({ error: 'Failed to retrieve vault' });
   }
-  
-  if (error.type === 'entity.too.large') {
-    return res.status(413).json({ error: 'Request entity too large' });
+});
+
+// Create or update vault
+router.post('/', authenticateToken, vaultValidation, logActivity('VAULT_UPDATED'), async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { encryptedData, clientSalt } = req.body;
+
+    // Generate server-side salt for additional encryption layer
+    const serverSalt = serverEncryption.generateSalt().toString('hex');
+
+    // Add server-side encryption layer (optional but recommended)
+    const serverPassword = req.user._id.toString() + process.env.SERVER_ENCRYPTION_KEY;
+    const serverEncrypted = serverEncryption.encrypt(encryptedData, serverPassword);
+
+    // Find existing vault or create new one
+    let vault = await Vault.findOne({ userId: req.user._id });
+    
+    if (vault) {
+      // Update existing vault
+      vault.encryptedData = serverEncrypted;
+      vault.serverSalt = serverSalt;
+      vault.clientSalt = clientSalt;
+      vault.lastAccessed = new Date();
+    } else {
+      // Create new vault
+      vault = new Vault({
+        userId: req.user._id,
+        encryptedData: serverEncrypted,
+        serverSalt,
+        clientSalt
+      });
+      
+      await logActivity('VAULT_CREATED')(req, res, () => {});
+    }
+
+    await vault.save();
+
+    res.json({
+      message: vault.isNew ? 'Vault created successfully' : 'Vault updated successfully',
+      vaultId: vault._id,
+      updatedAt: vault.updatedAt
+    });
+
+  } catch (error) {
+    console.error('Save vault error:', error);
+    res.status(500).json({ error: 'Failed to save vault' });
   }
-  
-  res.status(500).json({ 
-    error: 'Internal server error',
-    ...(process.env.NODE_ENV !== 'production' && { details: error.message })
-  });
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  mongoose.connection.close(() => {
-    console.log('MongoDB connection closed');
-    process.exit(0);
-  });
+// Export vault (for backup)
+router.get('/export', authenticateToken, logActivity('VAULT_EXPORTED'), async (req, res) => {
+  try {
+    const vault = await Vault.findOne({ userId: req.user._id });
+    
+    if (!vault) {
+      return res.status(404).json({ error: 'Vault not found' });
+    }
+
+    // Decrypt server-side encryption to return original client-encrypted data  
+    const serverPassword = req.user._id.toString() + process.env.SERVER_ENCRYPTION_KEY;
+    const decrypted = serverEncryption.decrypt(vault.encryptedData, serverPassword);
+
+    const exportData = {
+      version: vault.version,
+      timestamp: new Date().toISOString(),
+      clientSalt: vault.clientSalt,
+      encryptedData: decrypted, // Client-encrypted data only
+      exportedBy: req.user.email,
+      exportedAt: new Date().toISOString()
+    };
+
+    res.json(exportData);
+
+  } catch (error) {
+    console.error('Export vault error:', error);
+    res.status(500).json({ error: 'Failed to export vault' });
+  }
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV}`);
-  console.log(`🔒 Security: Rate limiting enabled`);
+// Delete vault
+router.delete('/', authenticateToken, logActivity('VAULT_DELETED'), async (req, res) => {
+  try {
+    const result = await Vault.deleteOne({ userId: req.user._id });
+    
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Vault not found' });
+    }
+
+    res.json({ message: 'Vault deleted successfully' });
+
+  } catch (error) {
+    console.error('Delete vault error:', error);
+    res.status(500).json({ error: 'Failed to delete vault' });
+  }
 });
 
-module.exports = app;
+module.exports = router;
