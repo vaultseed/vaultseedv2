@@ -18,7 +18,7 @@ router.get('/', authenticateToken, logActivity('VAULT_ACCESSED'), async (req, re
     const vault = await Vault.findOne({ userId: req.user._id });
     
     if (!vault) {
-      return res.status(404).json({ error: 'Vault not found' });
+      return res.json({ message: 'No vault found', encryptedData: null });
     }
 
     // Update last accessed time
@@ -97,7 +97,7 @@ router.get('/export', authenticateToken, logActivity('VAULT_EXPORTED'), async (r
     const vault = await Vault.findOne({ userId: req.user._id });
     
     if (!vault) {
-      return res.status(404).json({ error: 'Vault not found' });
+      return res.json({ message: 'No vault found', encryptedData: null });
     }
 
     // Decrypt server-side encryption to return original client-encrypted data  
