@@ -1,63 +1,74 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Plus, Eye, EyeOff, Download, Upload, Trash2, Copy, Lock, Unlock, Moon, Sun, Github, MessageSquare } from 'lucide-react';
-import { getKey, encryptData, decryptData, validatePassword, generateSalt, getPasswordStrength, exportVault } from './utils/crypto';
+import { Shield, Plus, Eye, EyeOff, Sun, Moon, Download, Github, MessageSquare } from 'lucide-react';
+import { 
+  encryptData, 
+  decryptData, 
+  getKey, 
+  validatePassword, 
+  generateSalt,
+  getPasswordStrength 
+} from './utils/crypto';
 import { 
   saveVault, 
   loadVault, 
   getFailedAttempts, 
   setFailedAttempts, 
-  isAccountLocked, 
   recordFailedAttempt, 
-  clearFailedAttempts,
-  clearClipboardAfterDelay,
-  getAppSettings,
-  saveAppSettings,
-  isIPLocked,
+  clearFailedAttempts, 
+  isAccountLocked,
   recordIPFailedAttempt,
-  clearIPFailedAttempts
+  clearIPFailedAttempts,
+  isIPLocked,
+  getAppSettings,
+  saveAppSettings
 } from './utils/storage';
 import { authAPI, vaultAPI } from './utils/api';
-import { VaultData, SeedPhrase, SecurityQuestion, TooltipState } from './types/vault';
-import Header from './components/Header';
-import TabButton from './components/TabButton';
+import { VaultData, SeedPhrase, TooltipState } from './types/vault';
 import FloatingInput from './components/FloatingInput';
 import ActionButton from './components/ActionButton';
 import SeedCard from './components/SeedCard';
+import TabButton from './components/TabButton';
+import Header from './components/Header';
 import ExportModal from './components/ExportModal';
 import FeedbackModal from './components/FeedbackModal';
 import Tooltip from './components/Tooltip';
-import SecurityFeatures from './components/SecurityFeatures';
 import FAQ from './components/FAQ';
+import SecurityFeatures from './components/SecurityFeatures';
 import SocialLinks from './components/SocialLinks';
 
 function App() {
   // Authentication state
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
-  
-  // Form state
+  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [securityQuestions, setSecurityQuestions] = useState<SecurityQuestion[]>([
+  const [securityQuestions, setSecurityQuestions] = useState([
     { question: '', answer: '' },
     { question: '', answer: '' }
   ]);
+  const [securityAnswers, setSecurityAnswers] = useState(['', '']);
+  const [showSecurityVerification, setShowSecurityVerification] = useState(false);
+  const [storedSecurityQuestions, setStoredSecurityQuestions] = useState<string[]>([]);
   
-  // Vault state
-  const [vaultData, setVaultData] = useState<VaultData>({ seeds: [], securityQuestions: [] });
-  const [isVaultUnlocked, setIsVaultUnlocked] = useState(false);
-  const [masterPassword, setMasterPassword] = useState('');
-  const [newSeedPhrase, setNewSeedPhrase] = useState('');
-  const [newSeedName, setNewSeedName] = useState('');
-  
-  // UI state
+  // App state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [darkMode, setDarkMode] = useState(false);
+  
+  // Vault state
+  const [vaultData, setVaultData] = useState<VaultData>({ seeds: [], securityQuestions: [] });
+  const [newSeed, setNewSeed] = useState('');
+  const [newSeedName, setNewSeedName] = useState('');
+  const [showAddSeed, setShowAddSeed] = useState(false);
+  const [activeTab, setActiveTab] = useState<'vault' | 'security' | 'faq'>('vault');
+  
+  // Modal state
   const [showExportModal, setShowExportModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+  
+  // Tooltip state
   const [tooltip, setTooltip] = useState<TooltipState>({ show: false, message: '', type: 'info' });
 
   // Load settings on mount
@@ -65,12 +76,13 @@ function App() {
     const settings = getAppSettings();
     setDarkMode(settings.darkMode);
     
-    // Check if user is already logged in
+    // Check for existing session
     const token = localStorage.getItem('vaultseed_token');
     const user = localStorage.getItem('vaultseed_user');
     if (token && user) {
-      setCurrentUser(JSON.parse(user));
       setIsAuthenticated(true);
+      setCurrentUser(JSON.parse(user));
+      loadUserVault();
     }
   }, []);
 
@@ -88,14 +100,26 @@ function App() {
     setTooltip({ show: false, message: '', type: 'info' });
   };
 
-  const handleRegister = async () => {
-    // Check IP-based rate limiting first
-    const ipLockStatus = isIPLocked();
-    if (ipLockStatus.locked) {
-      setError(`Too many failed attempts from this device. Try again in ${ipLockStatus.timeLeft} minutes.`);
-      return;
+  const loadUserVault = async () => {
+    try {
+      const response = await vaultAPI.get();
+      if (response.encryptedData && response.clientSalt) {
+        // For now, we'll use local storage as fallback
+        const localVault = loadVault(email);
+        if (localVault) {
+          const key = await getKey(password, localVault.salt);
+          const decrypted = await decryptData(key, localVault.data);
+          if (decrypted) {
+            setVaultData(JSON.parse(decrypted));
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load vault:', error);
     }
+  };
 
+  const handleRegister = async () => {
     if (!email || !password || !confirmPassword) {
       setError('Please fill in all fields');
       return;
@@ -116,25 +140,30 @@ function App() {
       return;
     }
 
+    // Check IP-based rate limiting
+    const ipLock = isIPLocked();
+    if (ipLock.locked) {
+      setError(`Too many failed attempts. Try again in ${ipLock.timeLeft} minutes.`);
+      return;
+    }
+
     setLoading(true);
     setError('');
 
     try {
       const salt = generateSalt();
       
-      await authAPI.register({
+      const response = await authAPI.register({
         email,
         password,
         securityQuestions,
         salt
       });
 
+      setCurrentUser(response.user);
+      setIsAuthenticated(true);
       clearIPFailedAttempts();
-      showTooltip('Account created successfully! You can now log in.', 'success');
-      setAuthMode('login');
-      setPassword('');
-      setConfirmPassword('');
-      setSecurityQuestions([{ question: '', answer: '' }, { question: '', answer: '' }]);
+      showTooltip('Account created successfully!', 'success');
     } catch (error: any) {
       recordIPFailedAttempt();
       setError(error.message || 'Registration failed');
@@ -144,22 +173,22 @@ function App() {
   };
 
   const handleLogin = async () => {
-    // Check IP-based rate limiting first
-    const ipLockStatus = isIPLocked();
-    if (ipLockStatus.locked) {
-      setError(`Too many failed attempts from this device. Try again in ${ipLockStatus.timeLeft} minutes.`);
-      return;
-    }
-
-    // Check account-specific locking
-    const lockStatus = isAccountLocked(email);
-    if (lockStatus.locked) {
-      setError(`Account locked due to failed attempts. Try again in ${lockStatus.timeLeft} minutes.`);
-      return;
-    }
-
     if (!email || !password) {
       setError('Please enter email and password');
+      return;
+    }
+
+    // Check account-specific lockout
+    const lockStatus = isAccountLocked(email);
+    if (lockStatus.locked) {
+      setError(`Account locked. Try again in ${lockStatus.timeLeft} minutes.`);
+      return;
+    }
+
+    // Check IP-based rate limiting
+    const ipLock = isIPLocked();
+    if (ipLock.locked) {
+      setError(`Too many failed attempts. Try again in ${ipLock.timeLeft} minutes.`);
       return;
     }
 
@@ -169,11 +198,18 @@ function App() {
     try {
       const response = await authAPI.login({ email, password });
       
-      clearFailedAttempts(email);
-      clearIPFailedAttempts();
-      setCurrentUser(response.user);
-      setIsAuthenticated(true);
-      showTooltip('Login successful!', 'success');
+      if (response.user.securityQuestions && response.user.securityQuestions.length > 0) {
+        setStoredSecurityQuestions(response.user.securityQuestions.map((sq: any) => sq.question));
+        setShowSecurityVerification(true);
+        setCurrentUser(response.user);
+      } else {
+        setCurrentUser(response.user);
+        setIsAuthenticated(true);
+        clearFailedAttempts(email);
+        clearIPFailedAttempts();
+        showTooltip('Login successful!', 'success');
+        loadUserVault();
+      }
     } catch (error: any) {
       recordFailedAttempt(email);
       recordIPFailedAttempt();
@@ -183,9 +219,9 @@ function App() {
     }
   };
 
-  const handleUnlockVault = async () => {
-    if (!masterPassword) {
-      setError('Please enter your master password');
+  const handleSecurityVerification = async () => {
+    if (securityAnswers.some(answer => !answer.trim())) {
+      setError('Please answer both security questions');
       return;
     }
 
@@ -193,104 +229,84 @@ function App() {
     setError('');
 
     try {
-      // Try to load vault from server first
-      try {
-        const serverVault = await vaultAPI.get();
-        if (serverVault.encryptedData && serverVault.clientSalt) {
-          const key = await getKey(masterPassword, serverVault.clientSalt);
-          const decrypted = await decryptData(key, serverVault.encryptedData);
-          
-          if (decrypted) {
-            const data = JSON.parse(decrypted);
-            setVaultData(data);
-            setIsVaultUnlocked(true);
-            showTooltip('Vault unlocked successfully!', 'success');
-            return;
-          }
-        }
-      } catch (serverError) {
-        console.log('Server vault not found, checking local storage');
-      }
+      await authAPI.verifySecurityQuestions({
+        email,
+        answers: securityAnswers
+      });
 
-      // Fallback to local storage
-      const stored = loadVault(currentUser.email);
-      if (stored) {
-        const key = await getKey(masterPassword, stored.salt);
-        const decrypted = await decryptData(key, stored.data);
-        
-        if (decrypted) {
-          const data = JSON.parse(decrypted);
-          setVaultData(data);
-          setIsVaultUnlocked(true);
-          showTooltip('Vault unlocked successfully!', 'success');
-        } else {
-          setError('Invalid master password');
-        }
-      } else {
-        // New vault
-        setVaultData({ seeds: [], securityQuestions: [] });
-        setIsVaultUnlocked(true);
-        showTooltip('New vault created!', 'success');
-      }
-    } catch (error) {
-      setError('Failed to unlock vault');
+      setIsAuthenticated(true);
+      setShowSecurityVerification(false);
+      clearFailedAttempts(email);
+      clearIPFailedAttempts();
+      showTooltip('Security verification successful!', 'success');
+      loadUserVault();
+    } catch (error: any) {
+      recordFailedAttempt(email);
+      recordIPFailedAttempt();
+      setError(error.message || 'Security verification failed');
     } finally {
       setLoading(false);
     }
   };
 
   const handleAddSeed = async () => {
-    if (!newSeedPhrase.trim()) {
+    if (!newSeed.trim()) {
       setError('Please enter a seed phrase');
       return;
     }
 
-    const newSeed: SeedPhrase = {
+    const seedPhrase: SeedPhrase = {
       id: Date.now().toString(),
-      seed: newSeedPhrase.trim(),
-      name: newSeedName.trim() || 'Unnamed Wallet',
+      seed: newSeed.trim(),
+      name: newSeedName.trim() || undefined,
       createdAt: new Date().toISOString()
     };
 
     const updatedVault = {
       ...vaultData,
-      seeds: [...vaultData.seeds, newSeed]
+      seeds: [...vaultData.seeds, seedPhrase]
     };
 
-    await saveVaultData(updatedVault);
-    setNewSeedPhrase('');
-    setNewSeedName('');
-    showTooltip('Seed phrase added successfully!', 'success');
+    try {
+      await saveVaultData(updatedVault);
+      setVaultData(updatedVault);
+      setNewSeed('');
+      setNewSeedName('');
+      setShowAddSeed(false);
+      showTooltip('Seed phrase added successfully!', 'success');
+    } catch (error) {
+      setError('Failed to save seed phrase');
+    }
   };
 
-  const handleDeleteSeed = async (id: string) => {
+  const handleDeleteSeed = async (seedId: string) => {
     const updatedVault = {
       ...vaultData,
-      seeds: vaultData.seeds.filter(seed => seed.id !== id)
+      seeds: vaultData.seeds.filter(seed => seed.id !== seedId)
     };
 
-    await saveVaultData(updatedVault);
-    showTooltip('Seed phrase deleted', 'success');
+    try {
+      await saveVaultData(updatedVault);
+      setVaultData(updatedVault);
+      showTooltip('Seed phrase deleted', 'success');
+    } catch (error) {
+      setError('Failed to delete seed phrase');
+    }
   };
 
   const saveVaultData = async (data: VaultData) => {
     try {
       const salt = generateSalt();
-      const key = await getKey(masterPassword, salt);
+      const key = await getKey(password, salt);
       const encrypted = await encryptData(key, JSON.stringify(data));
       
       // Save to server
-      try {
-        await vaultAPI.save(encrypted, salt);
-      } catch (serverError) {
-        console.log('Server save failed, saving locally');
-        // Fallback to local storage
-        saveVault(currentUser.email, { salt, data: encrypted });
-      }
+      await vaultAPI.save(encrypted, salt);
       
-      setVaultData(data);
+      // Also save locally as backup
+      saveVault(email, { salt, data: encrypted });
     } catch (error) {
-      showTooltip('Failed to save vault', 'error');
+      throw new Error('Failed to save vault data');
     }
   };
 
@@ -298,267 +314,279 @@ function App() {
     authAPI.logout();
     setIsAuthenticated(false);
     setCurrentUser(null);
-    setIsVaultUnlocked(false);
     setVaultData({ seeds: [], securityQuestions: [] });
-    setMasterPassword('');
     setEmail('');
     setPassword('');
+    setConfirmPassword('');
+    setSecurityQuestions([{ question: '', answer: '' }, { question: '', answer: '' }]);
+    setSecurityAnswers(['', '']);
+    setShowSecurityVerification(false);
     showTooltip('Logged out successfully', 'success');
   };
 
-  const handleCopyFeedback = (message: string) => {
-    showTooltip(message, 'success');
+  const resetForm = () => {
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
+    setSecurityQuestions([{ question: '', answer: '' }, { question: '', answer: '' }]);
+    setSecurityAnswers(['', '']);
+    setError('');
+    setShowSecurityVerification(false);
   };
 
-  // Background gradient based on theme
-  const backgroundClass = darkMode 
-    ? 'min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-indigo-900'
-    : 'min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50';
+  const switchMode = (loginMode: boolean) => {
+    setIsLogin(loginMode);
+    resetForm();
+  };
 
-  if (!isAuthenticated) {
+  if (isAuthenticated) {
     return (
-      <div className={backgroundClass}>
-        <Tooltip {...tooltip} onHide={hideTooltip} darkMode={darkMode} />
-        <div className="container mx-auto px-4 py-8">
+      <div className={`min-h-screen transition-colors duration-300 ${
+        darkMode 
+          ? 'bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900' 
+          : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
+      }`}>
+        <div className="container mx-auto px-4 py-6 sm:py-8">
           <Header 
-            darkMode={darkMode} 
-            onToggleDarkMode={() => setDarkMode(!darkMode)} 
+            darkMode={darkMode}
+            onToggleDarkMode={() => setDarkMode(!darkMode)}
+            onExport={() => setShowExportModal(true)}
+            onLogout={handleLogout}
+            currentUser={currentUser}
           />
-          
-          <div className="max-w-md mx-auto">
-            <div className={`backdrop-blur-sm rounded-2xl p-6 shadow-2xl border transition-all duration-300 ${
-              darkMode 
-                ? 'bg-gray-800/80 border-gray-700/20' 
-                : 'bg-white/80 border-white/20'
-            } ${authMode === 'login' ? 'min-h-[400px]' : 'min-h-[600px]'}`}>
-              
-              <div className="flex justify-center mb-6">
-                <div className="flex bg-gray-100 dark:bg-gray-700 rounded-xl p-1">
+
+          <div className="flex flex-col lg:flex-row gap-6 sm:gap-8">
+            <div className="lg:w-1/4">
+              <div className={`backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-xl border ${
+                darkMode ? 'bg-gray-800/80 border-gray-700/20' : 'bg-white/80 border-white/20'
+              }`}>
+                <div className="flex flex-col space-y-2 sm:space-y-3">
                   <TabButton
-                    active={authMode === 'login'}
-                    onClick={() => {
-                      setAuthMode('login');
-                      setError('');
-                    }}
+                    active={activeTab === 'vault'}
+                    onClick={() => setActiveTab('vault')}
                     darkMode={darkMode}
                   >
-                    Login
+                    My Vault
                   </TabButton>
                   <TabButton
-                    active={authMode === 'register'}
-                    onClick={() => {
-                      setAuthMode('register');
-                      setError('');
-                    }}
+                    active={activeTab === 'security'}
+                    onClick={() => setActiveTab('security')}
                     darkMode={darkMode}
                   >
-                    Register
+                    Security
+                  </TabButton>
+                  <TabButton
+                    active={activeTab === 'faq'}
+                    onClick={() => setActiveTab('faq')}
+                    darkMode={darkMode}
+                  >
+                    FAQ
                   </TabButton>
                 </div>
               </div>
+            </div>
 
-              <div className={authMode === 'login' ? 'space-y-4' : 'space-y-6'}>
-                <FloatingInput
-                  id="email"
-                  label="Email"
-                  type="email"
-                  value={email}
-                  onChange={setEmail}
-                  placeholder="Enter your email"
-                  required
-                  darkMode={darkMode}
-                />
-
-                <FloatingInput
-                  id="password"
-                  label="Password"
-                  value={password}
-                  onChange={setPassword}
-                  placeholder="Enter your password"
-                  isPassword
-                  required
-                  darkMode={darkMode}
-                  showPasswordStrength={authMode === 'register'}
-                />
-
-                {authMode === 'register' && (
-                  <>
-                    <FloatingInput
-                      id="confirmPassword"
-                      label="Confirm Password"
-                      value={confirmPassword}
-                      onChange={setConfirmPassword}
-                      placeholder="Confirm your password"
-                      isPassword
-                      required
-                      darkMode={darkMode}
-                    />
-
-                    <div className={`p-4 rounded-lg border ${
-                      darkMode 
-                        ? 'bg-blue-900/20 border-blue-700/30 text-blue-200' 
-                        : 'bg-blue-50 border-blue-200 text-blue-800'
+            <div className="lg:w-3/4">
+              {activeTab === 'vault' && (
+                <div className={`backdrop-blur-sm rounded-2xl p-4 sm:p-6 md:p-8 shadow-xl border ${
+                  darkMode ? 'bg-gray-800/80 border-gray-700/20' : 'bg-white/80 border-white/20'
+                }`}>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 sm:mb-8">
+                    <h2 className={`text-xl sm:text-2xl font-bold mb-4 sm:mb-0 ${
+                      darkMode ? 'text-gray-200' : 'text-gray-800'
                     }`}>
-                      <h4 className="font-semibold mb-2 flex items-center">
-                        <Lock className="w-4 h-4 mr-2" />
-                        Security Questions
-                      </h4>
-                      <p className="text-sm mb-3">
-                        These will help you recover access if you forget your password.
-                      </p>
+                      Seed Phrases ({vaultData.seeds.length})
+                    </h2>
+                    <ActionButton
+                      onClick={() => setShowAddSeed(!showAddSeed)}
+                      darkMode={darkMode}
+                      className="w-full sm:w-auto"
+                    >
+                      <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
+                      Add Seed
+                    </ActionButton>
+                  </div>
+
+                  {showAddSeed && (
+                    <div className={`mb-6 sm:mb-8 p-4 sm:p-6 rounded-xl border ${
+                      darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
+                    }`}>
+                      <h3 className={`text-lg font-semibold mb-4 ${
+                        darkMode ? 'text-gray-200' : 'text-gray-800'
+                      }`}>
+                        Add New Seed Phrase
+                      </h3>
                       
-                      <div className="space-y-3">
-                        {securityQuestions.map((sq, index) => (
-                          <div key={index} className="space-y-2">
-                            <FloatingInput
-                              id={`question-${index}`}
-                              label={`Security Question ${index + 1}`}
-                              value={sq.question}
-                              onChange={(value) => {
-                                const updated = [...securityQuestions];
-                                updated[index].question = value;
-                                setSecurityQuestions(updated);
-                              }}
-                              placeholder="e.g., What was your first pet's name?"
-                              required
-                              darkMode={darkMode}
-                            />
-                            <FloatingInput
-                              id={`answer-${index}`}
-                              label={`Answer ${index + 1}`}
-                              value={sq.answer}
-                              onChange={(value) => {
-                                const updated = [...securityQuestions];
-                                updated[index].answer = value;
-                                setSecurityQuestions(updated);
-                              }}
-                              placeholder="Your answer"
-                              required
-                              darkMode={darkMode}
-                            />
-                          </div>
-                        ))}
+                      <FloatingInput
+                        id="seedName"
+                        label="Wallet Name (Optional)"
+                        value={newSeedName}
+                        onChange={setNewSeedName}
+                        placeholder="e.g., Main Wallet, Trading Wallet"
+                        darkMode={darkMode}
+                      />
+
+                      <FloatingInput
+                        id="seedPhrase"
+                        label="Seed Phrase"
+                        value={newSeed}
+                        onChange={setNewSeed}
+                        placeholder="Enter your 12 or 24 word seed phrase"
+                        required
+                        darkMode={darkMode}
+                        error={error}
+                      />
+
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        <ActionButton
+                          onClick={() => setShowAddSeed(false)}
+                          variant="secondary"
+                          darkMode={darkMode}
+                          className="flex-1"
+                        >
+                          Cancel
+                        </ActionButton>
+                        <ActionButton
+                          onClick={handleAddSeed}
+                          disabled={!newSeed.trim()}
+                          darkMode={darkMode}
+                          className="flex-1"
+                        >
+                          Add Seed Phrase
+                        </ActionButton>
                       </div>
                     </div>
-                  </>
-                )}
+                  )}
 
-                {error && (
-                  <div className="bg-red-100 dark:bg-red-900/30 border border-red-300 dark:border-red-700 text-red-700 dark:text-red-300 px-4 py-3 rounded-lg">
-                    {error}
-                  </div>
-                )}
+                  {vaultData.seeds.length === 0 ? (
+                    <div className={`text-center py-12 ${
+                      darkMode ? 'text-gray-400' : 'text-gray-500'
+                    }`}>
+                      <Shield className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                      <p className="text-lg mb-2">Your vault is empty</p>
+                      <p className="text-sm">Add your first seed phrase to get started</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+                      {vaultData.seeds.map((seed) => (
+                        <SeedCard
+                          key={seed.id}
+                          seed={seed}
+                          onDelete={() => handleDeleteSeed(seed.id)}
+                          darkMode={darkMode}
+                          onCopyFeedback={(message) => showTooltip(message, 'success')}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
-                <ActionButton
-                  onClick={authMode === 'login' ? handleLogin : handleRegister}
-                  loading={loading}
-                  darkMode={darkMode}
-                >
-                  {authMode === 'login' ? 'Login' : 'Create Account'}
-                </ActionButton>
-              </div>
+              {activeTab === 'security' && <SecurityFeatures darkMode={darkMode} />}
+              {activeTab === 'faq' && <FAQ darkMode={darkMode} />}
             </div>
           </div>
 
-          <div className="max-w-4xl mx-auto mt-12 space-y-8">
-            <SecurityFeatures darkMode={darkMode} />
-            <FAQ darkMode={darkMode} />
-            <SocialLinks 
-              darkMode={darkMode} 
-              onFeedbackClick={() => setShowFeedbackModal(true)} 
-            />
-          </div>
+          <SocialLinks 
+            darkMode={darkMode} 
+            onFeedbackClick={() => setShowFeedbackModal(true)} 
+          />
         </div>
+
+        <ExportModal
+          isOpen={showExportModal}
+          onClose={() => setShowExportModal(false)}
+          vaultData={vaultData}
+          darkMode={darkMode}
+          onSuccess={(message) => showTooltip(message, 'success')}
+        />
 
         <FeedbackModal
           isOpen={showFeedbackModal}
           onClose={() => setShowFeedbackModal(false)}
           darkMode={darkMode}
-          onSuccess={showTooltip}
+          onSuccess={(message) => showTooltip(message, 'success')}
+        />
+
+        <Tooltip
+          show={tooltip.show}
+          message={tooltip.message}
+          type={tooltip.type}
+          onHide={hideTooltip}
+          darkMode={darkMode}
         />
       </div>
     );
   }
 
-  if (!isVaultUnlocked) {
+  if (showSecurityVerification) {
     return (
-      <div className={backgroundClass}>
-        <Tooltip {...tooltip} onHide={hideTooltip} darkMode={darkMode} />
-        <div className="container mx-auto px-4 py-8">
-          <Header 
-            darkMode={darkMode} 
-            onToggleDarkMode={() => setDarkMode(!darkMode)}
-            onLogout={handleLogout}
-            currentUser={currentUser}
-          />
-          
-          <div className="max-w-md mx-auto">
-            <div className={`backdrop-blur-sm rounded-2xl p-8 shadow-2xl border ${
-              darkMode 
-                ? 'bg-gray-800/80 border-gray-700/20' 
-                : 'bg-white/80 border-white/20'
+      <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${
+        darkMode 
+          ? 'bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900' 
+          : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
+      }`}>
+        <div className={`w-full max-w-md backdrop-blur-sm rounded-2xl p-6 sm:p-8 shadow-2xl border ${
+          darkMode ? 'bg-gray-800/90 border-gray-700/30' : 'bg-white/90 border-white/30'
+        }`}>
+          <div className="text-center mb-6">
+            <Shield className={`w-12 h-12 mx-auto mb-4 ${
+              darkMode ? 'text-purple-400' : 'text-indigo-600'
+            }`} />
+            <h2 className={`text-2xl font-bold mb-2 ${
+              darkMode ? 'text-gray-200' : 'text-gray-800'
             }`}>
-              <div className="text-center mb-8">
-                <Unlock className={`w-16 h-16 mx-auto mb-4 ${
-                  darkMode ? 'text-purple-400' : 'text-indigo-600'
-                }`} />
-                <h2 className={`text-2xl font-bold ${
-                  darkMode ? 'text-gray-200' : 'text-gray-800'
-                }`}>
-                  Unlock Your Vault
-                </h2>
-                <p className={`mt-2 ${
-                  darkMode ? 'text-gray-400' : 'text-gray-600'
-                }`}>
-                  Enter your master password to access your seed phrases
-                </p>
-              </div>
+              Security Verification
+            </h2>
+            <p className={`text-sm ${
+              darkMode ? 'text-gray-400' : 'text-gray-600'
+            }`}>
+              Please answer your security questions
+            </p>
+          </div>
 
+          <div className="space-y-4">
+            {storedSecurityQuestions.map((question, index) => (
               <FloatingInput
-                id="masterPassword"
-                label="Master Password"
-                value={masterPassword}
-                onChange={setMasterPassword}
-                placeholder="Enter your master password"
-                isPassword
+                key={index}
+                id={`securityAnswer${index}`}
+                label={question}
+                value={securityAnswers[index]}
+                onChange={(value) => {
+                  const newAnswers = [...securityAnswers];
+                  newAnswers[index] = value;
+                  setSecurityAnswers(newAnswers);
+                  setError('');
+                }}
                 required
                 darkMode={darkMode}
-                error={error}
               />
+            ))}
+          </div>
 
-              <ActionButton
-                onClick={handleUnlockVault}
-                loading={loading}
-                darkMode={darkMode}
-              >
-                Unlock Vault
-              </ActionButton>
+          {error && (
+            <p className="text-red-500 text-sm mt-4 text-center">{error}</p>
+          )}
 
-              <div className={`mt-6 p-4 rounded-lg border ${
-                darkMode 
-                  ? 'bg-yellow-900/20 border-yellow-700/30 text-yellow-200' 
-                  : 'bg-yellow-50 border-yellow-200 text-yellow-800'
-              }`}>
-                <div className="flex items-start">
-                  <Shield className="w-5 h-5 mr-2 mt-0.5 flex-shrink-0" />
-                  <div className="text-sm">
-                    <p className="font-medium mb-1">Security Notice</p>
-                    <p>This is NOT your account password. This is your vault's master password that encrypts your seed phrases locally.</p>
-                    <p className="mt-2">
-                      <strong>⚠️ Warning:</strong> VaultSeed is currently in development. 
-                      <a 
-                        href="https://github.com/vaultseed/vaultseedv2" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="underline hover:no-underline ml-1"
-                      >
-                        View source code
-                      </a>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="mt-6 space-y-3">
+            <ActionButton
+              onClick={handleSecurityVerification}
+              loading={loading}
+              disabled={securityAnswers.some(answer => !answer.trim())}
+              darkMode={darkMode}
+            >
+              Verify
+            </ActionButton>
+            <ActionButton
+              onClick={() => {
+                setShowSecurityVerification(false);
+                resetForm();
+              }}
+              variant="secondary"
+              darkMode={darkMode}
+            >
+              Back to Login
+            </ActionButton>
           </div>
         </div>
       </div>
@@ -566,108 +594,250 @@ function App() {
   }
 
   return (
-    <div className={backgroundClass}>
-      <Tooltip {...tooltip} onHide={hideTooltip} darkMode={darkMode} />
-      <div className="container mx-auto px-4 py-8">
-        <Header 
-          darkMode={darkMode} 
-          onToggleDarkMode={() => setDarkMode(!darkMode)}
-          onExport={() => setShowExportModal(true)}
-          onLogout={handleLogout}
-          currentUser={currentUser}
-        />
-        
-        <div className="max-w-4xl mx-auto">
-          <div className={`backdrop-blur-sm rounded-2xl p-6 mb-8 shadow-xl border ${
-            darkMode 
-              ? 'bg-gray-800/80 border-gray-700/20' 
-              : 'bg-white/80 border-white/20'
+    <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${
+      darkMode 
+        ? 'bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900' 
+        : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
+    }`}>
+      <div className="w-full max-w-6xl flex flex-col lg:flex-row items-center gap-8 lg:gap-12">
+        {/* Left side - Branding */}
+        <div className="lg:w-1/2 text-center lg:text-left">
+          <div className="flex items-center justify-center lg:justify-start mb-6">
+            <Shield className={`w-12 h-12 sm:w-16 sm:h-16 mr-3 sm:mr-4 ${
+              darkMode ? 'text-purple-400' : 'text-indigo-600'
+            }`} />
+            <div>
+              <h1 className={`text-3xl sm:text-4xl lg:text-5xl font-bold ${
+                darkMode ? 'text-gray-200' : 'text-gray-800'
+              }`}>
+                VaultSeed
+              </h1>
+              <p className={`text-sm sm:text-base ${
+                darkMode ? 'text-purple-400' : 'text-indigo-600'
+              }`}>
+                Secure Seed Phrase Manager
+              </p>
+            </div>
+          </div>
+          
+          <p className={`text-lg sm:text-xl mb-6 sm:mb-8 ${
+            darkMode ? 'text-gray-300' : 'text-gray-600'
           }`}>
-            <h2 className={`text-2xl font-bold mb-6 ${
-              darkMode ? 'text-gray-200' : 'text-gray-800'
+            Enterprise-grade encryption for your crypto seed phrases with zero-knowledge architecture
+          </p>
+          
+          <div className="flex flex-wrap gap-4 justify-center lg:justify-start mb-6 sm:mb-8">
+            <div className={`flex items-center text-sm sm:text-base ${
+              darkMode ? 'text-gray-400' : 'text-gray-600'
             }`}>
-              Add New Seed Phrase
-            </h2>
+              <Shield className="w-4 h-4 mr-2 text-green-500" />
+              AES-256 Encryption
+            </div>
+            <div className={`flex items-center text-sm sm:text-base ${
+              darkMode ? 'text-gray-400' : 'text-gray-600'
+            }`}>
+              <Eye className="w-4 h-4 mr-2 text-green-500" />
+              Zero-Knowledge
+            </div>
+            <div className={`flex items-center text-sm sm:text-base ${
+              darkMode ? 'text-gray-400' : 'text-gray-600'
+            }`}>
+              <Github className="w-4 h-4 mr-2 text-green-500" />
+              Open Source
+            </div>
+          </div>
+
+          <div className="flex items-center justify-center lg:justify-start space-x-4">
+            <a
+              href="https://github.com/vaultseed/vaultseedv2"
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors text-sm ${
+                darkMode 
+                  ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' 
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              }`}
+            >
+              <Github className="w-4 h-4" />
+              <span>View Source</span>
+            </a>
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className={`p-2 rounded-lg transition-colors ${
+                darkMode 
+                  ? 'bg-gray-800 text-yellow-400 hover:bg-gray-700' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Right side - Auth Form */}
+        <div className="lg:w-1/2 w-full max-w-md">
+          <div className={`w-full backdrop-blur-sm rounded-2xl p-6 sm:p-8 shadow-2xl border transition-all duration-300 ${
+            darkMode ? 'bg-gray-800/90 border-gray-700/30' : 'bg-white/90 border-white/30'
+          } ${!isLogin ? 'min-h-[600px]' : ''}`}>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {/* Tab buttons */}
+            <div className="flex mb-6 sm:mb-8">
+              <button
+                onClick={() => switchMode(true)}
+                className={`flex-1 py-3 px-4 text-center font-semibold transition-all duration-200 rounded-l-xl ${
+                  isLogin
+                    ? darkMode
+                      ? 'bg-gray-700 text-purple-400 border-b-2 border-purple-400'
+                      : 'bg-gray-50 text-indigo-600 border-b-2 border-indigo-600'
+                    : darkMode
+                      ? 'text-gray-400 hover:text-gray-200'
+                      : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Login
+              </button>
+              <button
+                onClick={() => switchMode(false)}
+                className={`flex-1 py-3 px-4 text-center font-semibold transition-all duration-200 rounded-r-xl ${
+                  !isLogin
+                    ? darkMode
+                      ? 'bg-gray-700 text-purple-400 border-b-2 border-purple-400'
+                      : 'bg-gray-50 text-indigo-600 border-b-2 border-indigo-600'
+                    : darkMode
+                      ? 'text-gray-400 hover:text-gray-200'
+                      : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Register
+              </button>
+            </div>
+
+            {/* Form content */}
+            <div className={isLogin ? 'space-y-4' : 'space-y-6'}>
               <FloatingInput
-                id="seedName"
-                label="Wallet Name"
-                value={newSeedName}
-                onChange={setNewSeedName}
-                placeholder="e.g., Main Wallet, Trading Wallet"
-                darkMode={darkMode}
-              />
-              <FloatingInput
-                id="seedPhrase"
-                label="Seed Phrase"
-                value={newSeedPhrase}
-                onChange={setNewSeedPhrase}
-                placeholder="Enter your 12 or 24 word seed phrase"
+                id="email"
+                label="Email"
+                type="email"
+                value={email}
+                onChange={(value) => {
+                  setEmail(value);
+                  setError('');
+                }}
+                placeholder="Enter your email"
                 required
                 darkMode={darkMode}
               />
-            </div>
-            
-            <ActionButton
-              onClick={handleAddSeed}
-              disabled={!newSeedPhrase.trim()}
-              darkMode={darkMode}
-            >
-              <Plus className="w-5 h-5 mr-2" />
-              Add Seed Phrase
-            </ActionButton>
-          </div>
 
-          {vaultData.seeds.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {vaultData.seeds.map((seed) => (
-                <SeedCard
-                  key={seed.id}
-                  seed={seed}
-                  onDelete={() => handleDeleteSeed(seed.id)}
-                  darkMode={darkMode}
-                  onCopyFeedback={handleCopyFeedback}
-                />
-              ))}
+              <FloatingInput
+                id="password"
+                label="Password"
+                value={password}
+                onChange={(value) => {
+                  setPassword(value);
+                  setError('');
+                }}
+                placeholder="Enter your password"
+                isPassword
+                required
+                darkMode={darkMode}
+                showPasswordStrength={!isLogin}
+              />
+
+              {!isLogin && (
+                <>
+                  <FloatingInput
+                    id="confirmPassword"
+                    label="Confirm Password"
+                    value={confirmPassword}
+                    onChange={(value) => {
+                      setConfirmPassword(value);
+                      setError('');
+                    }}
+                    placeholder="Confirm your password"
+                    isPassword
+                    required
+                    darkMode={darkMode}
+                  />
+
+                  <div className={`p-4 rounded-lg border ${
+                    darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
+                  }`}>
+                    <h4 className={`font-semibold mb-3 ${
+                      darkMode ? 'text-gray-200' : 'text-gray-800'
+                    }`}>
+                      Security Questions
+                    </h4>
+                    <p className={`text-sm mb-4 ${
+                      darkMode ? 'text-gray-400' : 'text-gray-600'
+                    }`}>
+                      These will be used for account recovery if you forget your password
+                    </p>
+                    
+                    {securityQuestions.map((sq, index) => (
+                      <div key={index} className="mb-4">
+                        <FloatingInput
+                          id={`question${index}`}
+                          label={`Security Question ${index + 1}`}
+                          value={sq.question}
+                          onChange={(value) => {
+                            const newQuestions = [...securityQuestions];
+                            newQuestions[index].question = value;
+                            setSecurityQuestions(newQuestions);
+                            setError('');
+                          }}
+                          placeholder="e.g., What was your first pet's name?"
+                          required
+                          darkMode={darkMode}
+                        />
+                        <FloatingInput
+                          id={`answer${index}`}
+                          label={`Answer ${index + 1}`}
+                          value={sq.answer}
+                          onChange={(value) => {
+                            const newQuestions = [...securityQuestions];
+                            newQuestions[index].answer = value;
+                            setSecurityQuestions(newQuestions);
+                            setError('');
+                          }}
+                          placeholder="Your answer"
+                          required
+                          darkMode={darkMode}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {error && (
+                <p className="text-red-500 text-sm text-center flex items-center justify-center">
+                  <span className="w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center mr-2">!</span>
+                  {error}
+                </p>
+              )}
+
+              <ActionButton
+                onClick={isLogin ? handleLogin : handleRegister}
+                loading={loading}
+                disabled={
+                  !email || !password || 
+                  (!isLogin && (!confirmPassword || securityQuestions.some(sq => !sq.question || !sq.answer)))
+                }
+                darkMode={darkMode}
+              >
+                {isLogin ? 'Login' : 'Create Account'}
+              </ActionButton>
             </div>
-          ) : (
-            <div className={`backdrop-blur-sm rounded-2xl p-12 text-center shadow-xl border ${
-              darkMode 
-                ? 'bg-gray-800/80 border-gray-700/20' 
-                : 'bg-white/80 border-white/20'
-            }`}>
-              <Shield className={`w-16 h-16 mx-auto mb-4 ${
-                darkMode ? 'text-gray-600' : 'text-gray-400'
-              }`} />
-              <h3 className={`text-xl font-semibold mb-2 ${
-                darkMode ? 'text-gray-300' : 'text-gray-600'
-              }`}>
-                Your vault is empty
-              </h3>
-              <p className={`${
-                darkMode ? 'text-gray-400' : 'text-gray-500'
-              }`}>
-                Add your first seed phrase to get started
-              </p>
-            </div>
-          )}
+          </div>
         </div>
       </div>
 
-      <ExportModal
-        isOpen={showExportModal}
-        onClose={() => setShowExportModal(false)}
-        vaultData={vaultData}
+      <Tooltip
+        show={tooltip.show}
+        message={tooltip.message}
+        type={tooltip.type}
+        onHide={hideTooltip}
         darkMode={darkMode}
-        onSuccess={showTooltip}
-      />
-
-      <FeedbackModal
-        isOpen={showFeedbackModal}
-        onClose={() => setShowFeedbackModal(false)}
-        darkMode={darkMode}
-        onSuccess={showTooltip}
       />
     </div>
   );
