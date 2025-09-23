@@ -68,20 +68,9 @@ app.get('/api/test', (req, res) => {
   res.json({ message: 'Server is working!' });
 });
 
-// API Routes - wrapped in try-catch to prevent crashes
-try {
-  app.use('/api/auth', require('./routes/auth'));
-  console.log('✅ Auth routes loaded');
-} catch (error) {
-  console.error('❌ Error loading auth routes:', error.message);
-}
-
-try {
-  app.use('/api/vault', require('./routes/vault'));
-  console.log('✅ Vault routes loaded');
-} catch (error) {
-  console.error('❌ Error loading vault routes:', error.message);
-}
+// API Routes
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/vault', require('./routes/vault'));
 
 // 404 handler
 app.use('*', (req, res) => {
