@@ -2,9 +2,23 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Vault = require('../models/Vault');
 const { authenticateToken, logActivity } = require('../middleware/auth');
-const serverEncryption = require('../utils/encryption');
 
 const router = express.Router();
+
+// Import models with error handling
+let Vault;
+try {
+  Vault = require('../models/Vault');
+} catch (error) {
+  console.error('Error loading Vault model:', error.message);
+}
+
+let serverEncryption;
+try {
+  serverEncryption = require('../utils/encryption');
+} catch (error) {
+  console.error('Error loading server encryption:', error.message);
+}
 
 // Validation rules
 const vaultValidation = [
@@ -13,13 +27,16 @@ const vaultValidation = [
 ];
 
 // Get user's vault
-router.get('/', logActivity('VAULT_ACCESSED'), async (req, res) => {
+router.get('/', authenticateToken, logActivity('VAULT_ACCESSED'), async (req, res) => {
   try {
+    if (!Vault) {
+      return res.status(500).json({ error: 'Vault model not available' });
+    }
+    
     const vault = await Vault.findOne({ userId: req.user._id });
     
-const { logActivity } = require('../middleware/auth');
     if (!vault) {
-      return res.status(404).json({ error: 'Vault not found' });
+      return res.json({ message: 'No vault found', encryptedData: null });
     }
 
     // Update last accessed time
@@ -41,8 +58,12 @@ const { logActivity } = require('../middleware/auth');
 });
 
 // Create or update vault
-router.post('/', vaultValidation, logActivity('VAULT_UPDATED'), async (req, res) => {
+router.post('/', authenticateToken, vaultValidation, logActivity('VAULT_UPDATED'), async (req, res) => {
   try {
+    if (!Vault || !serverEncryption) {
+      return res.status(500).json({ error: 'Required modules not available' });
+    }
+    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
@@ -93,8 +114,12 @@ router.post('/', vaultValidation, logActivity('VAULT_UPDATED'), async (req, res)
 });
 
 // Export vault (for backup)
-router.get('/export', logActivity('VAULT_EXPORTED'), async (req, res) => {
+router.get('/export', authenticateToken, logActivity('VAULT_EXPORTED'), async (req, res) => {
   try {
+    if (!Vault || !serverEncryption) {
+      return res.status(500).json({ error: 'Required modules not available' });
+    }
+    
     const vault = await Vault.findOne({ userId: req.user._id });
     
     if (!vault) {
@@ -123,8 +148,12 @@ router.get('/export', logActivity('VAULT_EXPORTED'), async (req, res) => {
 });
 
 // Delete vault
-router.delete('/', logActivity('VAULT_DELETED'), async (req, res) => {
+router.delete('/', authenticateToken, logActivity('VAULT_DELETED'), async (req, res) => {
   try {
+    if (!Vault) {
+      return res.status(500).json({ error: 'Vault model not available' });
+    }
+    
     const result = await Vault.deleteOne({ userId: req.user._id });
     
     if (result.deletedCount === 0) {
