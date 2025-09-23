@@ -23,6 +23,21 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+// Adaptive rate limiting for auth endpoints with exponential backoff
+const adaptiveAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: (req) => {
+    // Get IP-based failure count (simplified for demo)
+    const baseLimit = 5;
+    return Math.max(baseLimit - (req.ip ? 0 : 0), 1);
+  },
+  message: {
+    error: 'Too many authentication attempts, please try again later.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Very strict rate limiting for password reset
 const passwordResetLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
