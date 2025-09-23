@@ -13,10 +13,11 @@ const vaultValidation = [
 ];
 
 // Get user's vault
-router.get('/', authenticateToken, logActivity('VAULT_ACCESSED'), async (req, res) => {
+router.get('/', logActivity('VAULT_ACCESSED'), async (req, res) => {
   try {
     const vault = await Vault.findOne({ userId: req.user._id });
     
+const { logActivity } = require('../middleware/auth');
     if (!vault) {
       return res.status(404).json({ error: 'Vault not found' });
     }
@@ -40,7 +41,7 @@ router.get('/', authenticateToken, logActivity('VAULT_ACCESSED'), async (req, re
 });
 
 // Create or update vault
-router.post('/', authenticateToken, vaultValidation, logActivity('VAULT_UPDATED'), async (req, res) => {
+router.post('/', vaultValidation, logActivity('VAULT_UPDATED'), async (req, res) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -92,12 +93,12 @@ router.post('/', authenticateToken, vaultValidation, logActivity('VAULT_UPDATED'
 });
 
 // Export vault (for backup)
-router.get('/export', authenticateToken, logActivity('VAULT_EXPORTED'), async (req, res) => {
+router.get('/export', logActivity('VAULT_EXPORTED'), async (req, res) => {
   try {
     const vault = await Vault.findOne({ userId: req.user._id });
     
     if (!vault) {
-      return res.status(404).json({ error: 'Vault not found' });
+      return res.json({ message: 'No vault found', encryptedData: null });
     }
 
     // Decrypt server-side encryption to return original client-encrypted data  
@@ -122,7 +123,7 @@ router.get('/export', authenticateToken, logActivity('VAULT_EXPORTED'), async (r
 });
 
 // Delete vault
-router.delete('/', authenticateToken, logActivity('VAULT_DELETED'), async (req, res) => {
+router.delete('/', logActivity('VAULT_DELETED'), async (req, res) => {
   try {
     const result = await Vault.deleteOne({ userId: req.user._id });
     
