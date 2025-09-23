@@ -3,6 +3,7 @@ const API_BASE_URL = import.meta.env.PROD
   ? 'https://vaultseedv2-production.up.railway.app/api'
   : 'http://localhost:3001/api';
 
+// API endpoints
 export const API_ENDPOINTS = {
   AUTH: {
     REGISTER: `${API_BASE_URL}/auth/register`,
@@ -14,27 +15,43 @@ export const API_ENDPOINTS = {
     SAVE: `${API_BASE_URL}/vault`,
     EXPORT: `${API_BASE_URL}/vault/export`,
     DELETE: `${API_BASE_URL}/vault`,
+  },
+  FEEDBACK: {
+    SUBMIT: `${API_BASE_URL}/feedback`,
   }
 };
 
-export const apiRequest = async (url: string, options: RequestInit = {}) => {
+// Generic API request function
+export async function apiRequest(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem('vaultseed_token');
+  
+  const defaultHeaders: HeadersInit = {
+    'Content-Type': 'application/json',
+  };
+  
+  if (token) {
+    defaultHeaders.Authorization = `Bearer ${token}`;
+  }
   
   const config: RequestInit = {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
-      ...(token && { Authorization: `Bearer ${token}` }),
+      ...defaultHeaders,
       ...options.headers,
     },
   };
-
-  const response = await fetch(url, config);
   
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Network error' }));
-    throw new Error(error.error || 'Request failed');
+  try {
+    const response = await fetch(url, config);
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+    
+    return await response.json();
+  } catch (error) {
+    console.error('API request failed:', error);
+    throw error;
   }
-  
-  return response.json();
-};
+}
