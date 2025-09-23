@@ -1,6 +1,6 @@
 // API Configuration
 const API_BASE_URL = import.meta.env.PROD 
-  ? 'https://vaultseed-api.railway.app/api'  // Your deployed backend URL
+  ? 'https://vaultseedv2-production.up.railway.app/api'
   : 'http://localhost:3001/api';
 
 export const API_ENDPOINTS = {
