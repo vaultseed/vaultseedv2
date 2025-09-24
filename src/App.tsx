@@ -223,7 +223,6 @@ function App() {
         clearIPFailedAttempts();
         showTooltip('Login successful!', 'success');
         await loadUserVault();
-      }
     } catch (error: any) {
       console.error('Login error:', error);
       recordFailedAttempt(email);
@@ -254,7 +253,7 @@ function App() {
       clearFailedAttempts(email);
       clearIPFailedAttempts();
       showTooltip('Security verification successful!', 'success');
-      loadUserVault();
+      await loadUserVault();
     } catch (error: any) {
       recordFailedAttempt(email);
       recordIPFailedAttempt();
