@@ -206,18 +206,22 @@ function App() {
     try {
       const response = await authAPI.login({ email, password });
       
-      setCurrentUser(response.user);
-      
-      // SECURITY FIX: Always require security verification for existing users
-      if (response.user.securityQuestions && response.user.securityQuestions.length > 0) {
-        setStoredSecurityQuestions(response.user.securityQuestions.map((sq: any) => sq.question));
-        setShowSecurityVerification(true);
+      if (response && response.user) {
+        setCurrentUser(response.user);
+        
+        // Check if user has security questions
+        if (response.user.securityQuestions && response.user.securityQuestions.length > 0) {
+          setStoredSecurityQuestions(response.user.securityQuestions.map((sq: any) => sq.question));
+          setShowSecurityVerification(true);
+        } else {
+          setIsAuthenticated(true);
+          clearFailedAttempts(email);
+          clearIPFailedAttempts();
+          showTooltip('Login successful!', 'success');
+          await loadUserVault();
+        }
       } else {
-        setIsAuthenticated(true);
-        clearFailedAttempts(email);
-        clearIPFailedAttempts();
-        showTooltip('Login successful!', 'success');
-        await loadUserVault();
+        throw new Error('Invalid response from server');
       }
     } catch (error: any) {
       console.error('Login error:', error);
