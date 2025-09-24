@@ -601,30 +601,20 @@ function App() {
             </ActionButton>
           </div>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${
-      darkMode 
-        ? 'bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900' 
-        : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
-    }`}>
-      <div className="w-full max-w-6xl flex flex-col lg:flex-row items-center gap-8 lg:gap-12">
-        {/* Left side - Branding */}
-        <div className="lg:w-1/2 text-center lg:text-left">
-          <div className="flex items-center justify-center lg:justify-start mb-6">
-            <Shield className={`w-12 h-12 sm:w-16 sm:h-16 mr-3 sm:mr-4 ${
+      <div className="w-full max-w-md mx-auto">
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center mb-4">
+            <Shield className={`w-12 h-12 mr-3 ${
               darkMode ? 'text-purple-400' : 'text-indigo-600'
             }`} />
             <div>
-              <h1 className={`text-3xl sm:text-4xl lg:text-5xl font-bold ${
+              <h1 className={`text-3xl font-bold ${
                 darkMode ? 'text-gray-200' : 'text-gray-800'
               }`}>
                 VaultSeed
               </h1>
-              <p className={`text-sm sm:text-base ${
+              <p className={`text-sm ${
                 darkMode ? 'text-purple-400' : 'text-indigo-600'
               }`}>
                 Secure Seed Phrase Manager
@@ -632,34 +622,13 @@ function App() {
             </div>
           </div>
           
-          <p className={`text-lg sm:text-xl mb-6 sm:mb-8 ${
+          <p className={`text-lg mb-6 ${
             darkMode ? 'text-gray-300' : 'text-gray-600'
           }`}>
-            Enterprise-grade encryption for your crypto seed phrases with zero-knowledge architecture
+            Enterprise-grade encryption for your crypto seed phrases
           </p>
           
-          <div className="flex flex-wrap gap-4 justify-center lg:justify-start mb-6 sm:mb-8">
-            <div className={`flex items-center text-sm sm:text-base ${
-              darkMode ? 'text-gray-400' : 'text-gray-600'
-            }`}>
-              <Shield className="w-4 h-4 mr-2 text-green-500" />
-              AES-256 Encryption
-            </div>
-            <div className={`flex items-center text-sm sm:text-base ${
-              darkMode ? 'text-gray-400' : 'text-gray-600'
-            }`}>
-              <Eye className="w-4 h-4 mr-2 text-green-500" />
-              Zero-Knowledge
-            </div>
-            <div className={`flex items-center text-sm sm:text-base ${
-              darkMode ? 'text-gray-400' : 'text-gray-600'
-            }`}>
-              <Github className="w-4 h-4 mr-2 text-green-500" />
-              Open Source
-            </div>
-          </div>
-
-          <div className="flex items-center justify-center lg:justify-start space-x-4">
+          <div className="flex items-center justify-center space-x-4 mb-6">
             <a
               href="https://github.com/vaultseed/vaultseedv2"
               target="_blank"
@@ -686,189 +655,199 @@ function App() {
           </div>
         </div>
 
-        {/* Right side - Auth Form */}
-        <div className="lg:w-1/2 w-full max-w-md mb-8 lg:mb-0">
-          <div className={`w-full backdrop-blur-sm rounded-2xl p-6 sm:p-8 shadow-2xl border transition-all duration-300 ${
-            darkMode ? 'bg-gray-800/90 border-gray-700/30' : 'bg-white/90 border-white/30'
-          }`}>
-            
-            {/* Tab buttons */}
-            <div className="flex mb-6 sm:mb-8">
-              <button
-                onClick={() => switchMode(true)}
-                className={`flex-1 py-3 px-4 text-center font-semibold transition-all duration-200 rounded-l-xl ${
-                  isLogin
-                    ? darkMode
-                      ? 'bg-gray-700 text-purple-400 border-b-2 border-purple-400'
-                      : 'bg-gray-50 text-indigo-600 border-b-2 border-indigo-600'
-                    : darkMode
-                      ? 'text-gray-400 hover:text-gray-200'
-                      : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Login
-              </button>
-              <button
-                onClick={() => switchMode(false)}
-                className={`flex-1 py-3 px-4 text-center font-semibold transition-all duration-200 rounded-r-xl ${
-                  !isLogin
-                    ? darkMode
-                      ? 'bg-gray-700 text-purple-400 border-b-2 border-purple-400'
-                      : 'bg-gray-50 text-indigo-600 border-b-2 border-indigo-600'
-                    : darkMode
-                      ? 'text-gray-400 hover:text-gray-200'
-                      : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                Register
-              </button>
-            </div>
+        {/* Auth Form */}
+        <div className={`w-full backdrop-blur-sm rounded-2xl p-6 sm:p-8 shadow-2xl border transition-all duration-300 mb-8 ${
+          darkMode ? 'bg-gray-800/90 border-gray-700/30' : 'bg-white/90 border-white/30'
+        }`}>
+          
+          {/* Tab buttons */}
+          <div className="flex mb-6 sm:mb-8">
+            <button
+              onClick={() => switchMode(true)}
+              className={`flex-1 py-3 px-4 text-center font-semibold transition-all duration-200 rounded-l-xl ${
+                isLogin
+                  ? darkMode
+                    ? 'bg-gray-700 text-purple-400 border-b-2 border-purple-400'
+                    : 'bg-gray-50 text-indigo-600 border-b-2 border-indigo-600'
+                  : darkMode
+                    ? 'text-gray-400 hover:text-gray-200'
+                    : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Login
+            </button>
+            <button
+              onClick={() => switchMode(false)}
+              className={`flex-1 py-3 px-4 text-center font-semibold transition-all duration-200 rounded-r-xl ${
+                !isLogin
+                  ? darkMode
+                    ? 'bg-gray-700 text-purple-400 border-b-2 border-purple-400'
+                    : 'bg-gray-50 text-indigo-600 border-b-2 border-indigo-600'
+                  : darkMode
+                    ? 'text-gray-400 hover:text-gray-200'
+                    : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              Register
+            </button>
+          </div>
 
-            {/* Form content */}
-            <div className={isLogin ? 'space-y-4' : 'space-y-6'}>
-              <FloatingInput
-                id="email"
-                label="Email"
-                type="email"
-                value={email}
-                onChange={(value) => {
-                  setEmail(value);
-                  setError('');
-                }}
-                placeholder="Enter your email"
-                required
-                darkMode={darkMode}
-              />
+          {/* Form content */}
+          <div className={isLogin ? 'space-y-4' : 'space-y-6'}>
+            <FloatingInput
+              id="email"
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(value) => {
+                setEmail(value);
+                setError('');
+              }}
+              placeholder="Enter your email"
+              required
+              darkMode={darkMode}
+            />
 
-              <FloatingInput
-                id="password"
-                label="Password"
-                value={password}
-                onChange={(value) => {
-                  setPassword(value);
-                  setError('');
-                }}
-                placeholder="Enter your password"
-                isPassword
-                required
-                darkMode={darkMode}
-                showPasswordStrength={!isLogin}
-              />
+            <FloatingInput
+              id="password"
+              label="Password"
+              value={password}
+              onChange={(value) => {
+                setPassword(value);
+                setError('');
+              }}
+              placeholder="Enter your password"
+              isPassword
+              required
+              darkMode={darkMode}
+              showPasswordStrength={!isLogin}
+            />
 
-              {!isLogin && (
-                <>
-                  <FloatingInput
-                    id="confirmPassword"
-                    label="Confirm Password"
-                    value={confirmPassword}
-                    onChange={(value) => {
-                      setConfirmPassword(value);
-                      setError('');
-                    }}
-                    placeholder="Confirm your password"
-                    isPassword
-                    required
-                    darkMode={darkMode}
-                  />
+            {!isLogin && (
+              <>
+                <FloatingInput
+                  id="confirmPassword"
+                  label="Confirm Password"
+                  value={confirmPassword}
+                  onChange={(value) => {
+                    setConfirmPassword(value);
+                    setError('');
+                  }}
+                  placeholder="Confirm your password"
+                  isPassword
+                  required
+                  darkMode={darkMode}
+                />
 
-                  <div className={`p-4 rounded-lg border ${
-                    darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
+                <div className={`p-4 rounded-lg border ${
+                  darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
+                }`}>
+                  <h4 className={`font-semibold mb-3 ${
+                    darkMode ? 'text-gray-200' : 'text-gray-800'
                   }`}>
-                    <h4 className={`font-semibold mb-3 ${
-                      darkMode ? 'text-gray-200' : 'text-gray-800'
+                    Security Questions
+                  </h4>
+                  <p className={`text-sm mb-4 ${
+                    darkMode ? 'text-gray-400' : 'text-gray-600'
+                  }`}>
+                    These are required to access your vault in the future.
+                  </p>
+                  
+                  <div className="mb-4">
+                    <h5 className={`text-sm font-medium mb-2 ${
+                      darkMode ? 'text-gray-300' : 'text-gray-700'
                     }`}>
-                      Security Questions
-                    </h4>
-                    <p className={`text-sm mb-4 ${
+                      Security Question 1
+                    </h5>
+                    <p className={`text-sm mb-2 ${
                       darkMode ? 'text-gray-400' : 'text-gray-600'
                     }`}>
-                      These are required to access your vault in the future.
+                      What was your first pet's name?
                     </p>
-                    
-                    <div className="mb-4">
-                      <h5 className={`text-sm font-medium mb-2 ${
-                        darkMode ? 'text-gray-300' : 'text-gray-700'
-                      }`}>
-                        Security Question 1 *
-                      </h5>
-                      <FloatingInput
-                        id="question1"
-                        label="What was your first pet's name?"
-                        value={securityQuestions[0].answer}
-                        onChange={(value) => {
-                          const newQuestions = [...securityQuestions];
-                          newQuestions[0].question = "What was your first pet's name?";
-                          newQuestions[0].answer = value;
-                          setSecurityQuestions(newQuestions);
-                          setError('');
-                        }}
-                        placeholder="Your answer"
-                        required
-                        darkMode={darkMode}
-                      />
-                    </div>
-
-                    <div className="mb-4">
-                      <h5 className={`text-sm font-medium mb-2 ${
-                        darkMode ? 'text-gray-300' : 'text-gray-700'
-                      }`}>
-                        Security Question 2 *
-                      </h5>
-                      <FloatingInput
-                        id="question2"
-                        label="What city were you born in?"
-                        value={securityQuestions[1].answer}
-                        onChange={(value) => {
-                          const newQuestions = [...securityQuestions];
-                          newQuestions[1].question = "What city were you born in?";
-                          newQuestions[1].answer = value;
-                          setSecurityQuestions(newQuestions);
-                          setError('');
-                        }}
-                        placeholder="Your answer"
-                        required
-                        darkMode={darkMode}
-                      />
-                    </div>
+                    <FloatingInput
+                      id="answer1"
+                      label="Answer 1"
+                      value={securityQuestions[0].answer}
+                      onChange={(value) => {
+                        const newQuestions = [...securityQuestions];
+                        newQuestions[0].question = "What was your first pet's name?";
+                        newQuestions[0].answer = value;
+                        setSecurityQuestions(newQuestions);
+                        setError('');
+                      }}
+                      placeholder="Your answer"
+                      required
+                      darkMode={darkMode}
+                    />
                   </div>
-                </>
-              )}
 
-              {error && (
-                <p className="text-red-500 text-sm text-center flex items-center justify-center">
-                  <span className="w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center mr-2">!</span>
-                  {error}
-                </p>
-              )}
+                  <div className="mb-4">
+                    <h5 className={`text-sm font-medium mb-2 ${
+                      darkMode ? 'text-gray-300' : 'text-gray-700'
+                    }`}>
+                      Security Question 2
+                    </h5>
+                    <p className={`text-sm mb-2 ${
+                      darkMode ? 'text-gray-400' : 'text-gray-600'
+                    }`}>
+                      What city were you born in?
+                    </p>
+                    <FloatingInput
+                      id="answer2"
+                      label="Answer 2"
+                      value={securityQuestions[1].answer}
+                      onChange={(value) => {
+                        const newQuestions = [...securityQuestions];
+                        newQuestions[1].question = "What city were you born in?";
+                        newQuestions[1].answer = value;
+                        setSecurityQuestions(newQuestions);
+                        setError('');
+                      }}
+                      placeholder="Your answer"
+                      required
+                      darkMode={darkMode}
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
-              <ActionButton
-                onClick={isLogin ? handleLogin : handleRegister}
-                loading={loading}
-                disabled={
-                  !email || !password || 
-                  (!isLogin && (!confirmPassword || securityQuestions.some(sq => !sq.question || !sq.answer)))
-                }
-                darkMode={darkMode}
-              >
-                {isLogin ? 'Login' : 'Create Account'}
-              </ActionButton>
-            </div>
+            {error && (
+              <p className="text-red-500 text-sm text-center flex items-center justify-center">
+                <span className="w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center mr-2">!</span>
+                {error}
+              </p>
+            )}
+
+            <ActionButton
+              onClick={isLogin ? handleLogin : handleRegister}
+              loading={loading}
+              disabled={
+                !email || !password || 
+                (!isLogin && (!confirmPassword || securityQuestions.some(sq => !sq.question || !sq.answer)))
+              }
+              darkMode={darkMode}
+            >
+              {isLogin ? 'Login' : 'Create Account'}
+            </ActionButton>
           </div>
         </div>
-      </div>
 
-      {/* FAQ and Security Features on main page */}
-      <div className="w-full max-w-6xl mt-12 lg:mt-16">
-        <div className="space-y-8">
+        {/* Security Features */}
+        <div className="mb-8">
           <SecurityFeatures darkMode={darkMode} />
+        </div>
+
+        {/* FAQ */}
+        <div className="mb-8">
           <FAQ darkMode={darkMode} />
         </div>
-      </div>
 
-      <SocialLinks 
-        darkMode={darkMode} 
-        onFeedbackClick={() => setShowFeedbackModal(true)} 
-      />
+        <SocialLinks 
+          darkMode={darkMode} 
+          onFeedbackClick={() => setShowFeedbackModal(true)} 
+        />
+      </div>
 
       <FeedbackModal
         isOpen={showFeedbackModal}
