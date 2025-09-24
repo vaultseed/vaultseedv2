@@ -5,17 +5,17 @@ import { clearClipboardAfterDelay } from '../utils/storage';
 
 interface SeedCardProps {
   seed: SeedPhrase;
-  onDelete: () => void;
+  onDelete: (id: string) => void;
   darkMode?: boolean;
-  onCopyFeedback?: (message: string) => void;
+  onCopy?: () => void;
 }
 
-const SeedCard: React.FC<SeedCardProps> = ({ seed, onDelete, darkMode = false, onCopyFeedback }) => {
+const SeedCard: React.FC<SeedCardProps> = ({ seed, onDelete, darkMode = false, onCopy }) => {
   const [isVisible, setIsVisible] = React.useState(false);
   
   const handleCopy = async () => {
     clearClipboardAfterDelay(seed.seed);
-    onCopyFeedback?.('Seed phrase copied! Auto-clearing in 10 seconds...');
+    onCopy?.();
   };
 
   const formatDate = (dateStr: string) => {
@@ -58,7 +58,10 @@ const SeedCard: React.FC<SeedCardProps> = ({ seed, onDelete, darkMode = false, o
             darkMode ? 'hover:bg-red-900/20' : 'hover:bg-red-50'
           }`}
         >
-          <Trash2 className="w-3 h-3 sm:w-4 sm:h-4" />
+          <Trash2 
+            className="w-3 h-3 sm:w-4 sm:h-4" 
+            onClick={() => onDelete(seed.id)}
+          />
         </button>
       </div>
       
