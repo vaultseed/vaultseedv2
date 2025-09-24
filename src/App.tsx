@@ -95,7 +95,6 @@ function App() {
 
   const loadUserVault = async () => {
     try {
-    try {
       const response = await vaultAPI.get();
       if (response.encryptedData && response.clientSalt) {
         const key = await getKey(password, response.clientSalt);
@@ -118,7 +117,6 @@ function App() {
           setVaultData(data);
           showTooltip(`Loaded ${data.seeds?.length || 0} seed phrases from local storage`, 'success');
         }
-      }
       }
     } catch (error) {
       console.error('Failed to load vault:', error);
