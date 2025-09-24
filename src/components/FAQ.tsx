@@ -32,7 +32,7 @@ const FAQ: React.FC<FAQProps> = ({ darkMode = false }) => {
     },
     {
       question: "Is VaultSeed open source?",
-      answer: "Yes, VaultSeed is fully open source and audited. You can review our code at github.com/vaultseed-io/vaultseed.io, contribute improvements, or even run your own instance. Transparency is key to building trust in security applications."
+      answer: "Yes, VaultSeed is fully open source and audited. You can review our code at github.com/vaultseed/vaultseedv2, contribute improvements, or even run your own instance. Transparency is key to building trust in security applications."
     },
     {
       question: "What devices are supported?",
