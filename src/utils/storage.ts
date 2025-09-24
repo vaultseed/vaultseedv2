@@ -21,6 +21,12 @@ export const loadVault = (email: string): VaultData | null => {
   return stored ? JSON.parse(stored) : null;
 };
 
+// ✅ Delete vault
+export const deleteVault = (email: string): void => {
+  const key = `vaultseed_${btoa(email)}`;
+  localStorage.removeItem(key);
+};
+
 // Failed attempts tracking
 export const getFailedAttempts = (email: string): number => {
   const key = `vaultseed_failed_${btoa(email)}`;
