@@ -83,8 +83,31 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
     saveAppSettings({ darkMode });
+  }, [darkMode]);
 
-  const loadUserVault = async () => {
+  const showTooltip = (message: string, type: 'info' | 'success' | 'error' = 'info') => {
+    setTooltip({ show: true, message, type });
+  };
+
+  const hideTooltip = () => {
+    setTooltip({ show: false, message: '', type: 'info' });
+  };
+
+          return;
+        }
+      } catch (error) {
+        console.error('Failed to load from server:', error);
+      }
+      
+      // Fallback to local storage
+      const localVault = loadVault(email);
+      if (localVault) {
+        try {
+          const key = await getKey(password, localVault.salt);
+          const decrypted = await decryptData(key, localVault.data);
+          setVaultData(JSON.parse(decrypted));
+        } catch (error) {
+          console.error('Failed to decrypt local vault:', error);
         }
       }
     } catch (error) {
@@ -876,6 +899,21 @@ function App() {
             onFeedbackClick={() => setShowFeedbackModal(true)} 
           />
         </div>
+
+        <FeedbackModal
+          isOpen={showFeedbackModal}
+          onClose={() => setShowFeedbackModal(false)}
+          darkMode={darkMode}
+          onSuccess={(message) => showTooltip(message, 'success')}
+        />
+
+        <Tooltip
+          show={tooltip.show}
+          message={tooltip.message}
+          type={tooltip.type}
+          onHide={hideTooltip}
+          darkMode={darkMode}
+        />
       </div>
     );
   }
