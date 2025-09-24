@@ -105,15 +105,6 @@ function App() {
           showTooltip(`Loaded ${data.seeds?.length || 0} seed phrases`, 'success');
           return;
         }
-      }
-      
-      // Fallback to local storage
-      const localVault = loadVault(email);
-      if (localVault) {
-        const key = await getKey(password, localVault.salt);
-        const decrypted = await decryptData(key, localVault.data);
-        if (decrypted) {
-          const data = JSON.parse(decrypted);
           setVaultData(data);
           showTooltip(`Loaded ${data.seeds?.length || 0} seed phrases from local storage`, 'success');
         }
