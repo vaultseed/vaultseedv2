@@ -119,6 +119,21 @@ function App() {
     }
   };
 
+  const resetForm = () => {
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
+    setSecurityQuestions([{ question: '', answer: '' }, { question: '', answer: '' }]);
+    setSecurityAnswers(['', '']);
+    setError('');
+  };
+
+  const switchMode = (loginMode: boolean) => {
+    setIsLogin(loginMode);
+    setError('');
+    // Don't reset form data when switching modes
+  };
+
   const handleRegister = async () => {
     if (!email || !password || !confirmPassword) {
       setError('Please fill in all fields');
@@ -160,13 +175,12 @@ function App() {
         salt
       });
 
-      setCurrentUser(response.user);
-      setIsAuthenticated(true);
       clearIPFailedAttempts();
       showTooltip('Account created successfully! Please login with your credentials.', 'success');
-      // Switch to login mode after successful registration
+      
+      // Switch to login mode and clear sensitive data
       setIsLogin(true);
-      setPassword(''); // Clear password for security
+      setPassword('');
       setConfirmPassword('');
       setSecurityQuestions([{ question: '', answer: '' }, { question: '', answer: '' }]);
     } catch (error: any) {
@@ -273,7 +287,13 @@ function App() {
     };
 
     try {
-      await saveVaultData(updatedVault);
+      const salt = generateSalt();
+      const key = await getKey(password, salt);
+      const encrypted = await encryptData(key, JSON.stringify(updatedVault));
+      
+      saveVault(email, { salt, data: encrypted });
+      await vaultAPI.save(encrypted, salt);
+      
       setVaultData(updatedVault);
       setNewSeed('');
       setNewSeedName('');
@@ -291,27 +311,17 @@ function App() {
     };
 
     try {
-      await saveVaultData(updatedVault);
-      setVaultData(updatedVault);
-      showTooltip('Seed phrase deleted', 'success');
-    } catch (error) {
-      setError('Failed to delete seed phrase');
-    }
-  };
-
-  const saveVaultData = async (data: VaultData) => {
-    try {
       const salt = generateSalt();
       const key = await getKey(password, salt);
-      const encrypted = await encryptData(key, JSON.stringify(data));
+      const encrypted = await encryptData(key, JSON.stringify(updatedVault));
       
-      // Save to server
+      saveVault(email, { salt, data: encrypted });
       await vaultAPI.save(encrypted, salt);
       
-      // Also save locally as backup
-      saveVault(email, { salt, data: encrypted });
+      setVaultData(updatedVault);
+      showTooltip('Seed phrase deleted successfully!', 'success');
     } catch (error) {
-      throw new Error('Failed to save vault data');
+      setError('Failed to delete seed phrase');
     }
   };
 
@@ -320,184 +330,158 @@ function App() {
     setIsAuthenticated(false);
     setCurrentUser(null);
     setVaultData({ seeds: [], securityQuestions: [] });
-    setEmail('');
-    setPassword('');
-    setConfirmPassword('');
-    setSecurityQuestions([{ question: '', answer: '' }, { question: '', answer: '' }]);
-    setSecurityAnswers(['', '']);
-    setShowSecurityVerification(false);
-    showTooltip('Logged out successfully', 'success');
-  };
-
-  const resetForm = () => {
-    setEmail('');
-    setPassword('');
-    setConfirmPassword('');
-    setSecurityQuestions([{ question: '', answer: '' }, { question: '', answer: '' }]);
-    setSecurityAnswers(['', '']);
-    setError('');
-    setShowSecurityVerification(false);
-  };
-
-  const switchMode = (loginMode: boolean) => {
-    setIsLogin(loginMode);
     resetForm();
+    showTooltip('Logged out successfully!', 'success');
   };
 
+  const handleExport = () => {
+    setShowExportModal(true);
+  };
+
+  // Authenticated vault view
   if (isAuthenticated) {
     return (
-      <div className={`min-h-screen transition-colors duration-300 ${
+      <div className={`min-h-screen p-4 transition-colors duration-300 ${
         darkMode 
           ? 'bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900' 
           : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
       }`}>
-        <div className="container mx-auto px-4 py-6 sm:py-8">
+        <div className="max-w-6xl mx-auto">
           <Header 
             darkMode={darkMode}
             onToggleDarkMode={() => setDarkMode(!darkMode)}
-            onExport={() => setShowExportModal(true)}
+            onExport={handleExport}
             onLogout={handleLogout}
             currentUser={currentUser}
           />
 
-          <div className="flex flex-col lg:flex-row gap-6 sm:gap-8">
-            <div className="lg:w-1/4">
-              <div className={`backdrop-blur-sm rounded-2xl p-4 sm:p-6 shadow-xl border ${
-                darkMode ? 'bg-gray-800/80 border-gray-700/20' : 'bg-white/80 border-white/20'
-              }`}>
-                <div className="flex flex-col space-y-2 sm:space-y-3">
-                  <TabButton
-                    active={activeTab === 'vault'}
-                    onClick={() => setActiveTab('vault')}
-                    darkMode={darkMode}
-                  >
-                    My Vault
-                  </TabButton>
-                  <TabButton
-                    active={activeTab === 'security'}
-                    onClick={() => setActiveTab('security')}
-                    darkMode={darkMode}
-                  >
-                    Security
-                  </TabButton>
-                  <TabButton
-                    active={activeTab === 'faq'}
-                    onClick={() => setActiveTab('faq')}
-                    darkMode={darkMode}
-                  >
-                    FAQ
-                  </TabButton>
-                </div>
-              </div>
-            </div>
-
-            <div className="lg:w-3/4">
-              {activeTab === 'vault' && (
-                <div className={`backdrop-blur-sm rounded-2xl p-4 sm:p-6 md:p-8 shadow-xl border ${
-                  darkMode ? 'bg-gray-800/80 border-gray-700/20' : 'bg-white/80 border-white/20'
-                }`}>
-                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 sm:mb-8">
-                    <h2 className={`text-xl sm:text-2xl font-bold mb-4 sm:mb-0 ${
-                      darkMode ? 'text-gray-200' : 'text-gray-800'
-                    }`}>
-                      Seed Phrases ({vaultData.seeds.length})
-                    </h2>
-                    <ActionButton
-                      onClick={() => setShowAddSeed(!showAddSeed)}
-                      darkMode={darkMode}
-                      className="w-full sm:w-auto"
-                    >
-                      <Plus className="w-4 h-4 sm:w-5 sm:h-5 mr-2" />
-                      Add Seed
-                    </ActionButton>
-                  </div>
-
-                  {showAddSeed && (
-                    <div className={`mb-6 sm:mb-8 p-4 sm:p-6 rounded-xl border ${
-                      darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
-                    }`}>
-                      <h3 className={`text-lg font-semibold mb-4 ${
-                        darkMode ? 'text-gray-200' : 'text-gray-800'
-                      }`}>
-                        Add New Seed Phrase
-                      </h3>
-                      
-                      <FloatingInput
-                        id="seedName"
-                        label="Wallet Name (Optional)"
-                        value={newSeedName}
-                        onChange={setNewSeedName}
-                        placeholder="e.g., Main Wallet, Trading Wallet"
-                        darkMode={darkMode}
-                      />
-
-                      <FloatingInput
-                        id="seedPhrase"
-                        label="Seed Phrase"
-                        value={newSeed}
-                        onChange={setNewSeed}
-                        placeholder="Enter your 12 or 24 word seed phrase"
-                        required
-                        darkMode={darkMode}
-                        error={error}
-                      />
-
-                      <div className="flex flex-col sm:flex-row gap-3">
-                        <ActionButton
-                          onClick={() => setShowAddSeed(false)}
-                          variant="secondary"
-                          darkMode={darkMode}
-                          className="flex-1"
-                        >
-                          Cancel
-                        </ActionButton>
-                        <ActionButton
-                          onClick={handleAddSeed}
-                          loading={loading}
-                          disabled={!newSeed.trim()}
-                          darkMode={darkMode}
-                          className="flex-1"
-                        >
-                          Add Seed
-                        </ActionButton>
-                      </div>
-                    </div>
-                  )}
-
-                  {vaultData.seeds.length === 0 ? (
-                    <div className="text-center py-12">
-                      <Shield className={`w-16 h-16 mx-auto mb-4 ${
-                        darkMode ? 'text-gray-600' : 'text-gray-400'
-                      }`} />
-                      <h3 className={`text-xl font-semibold mb-2 ${
-                        darkMode ? 'text-gray-400' : 'text-gray-600'
-                      }`}>
-                        No seed phrases yet
-                      </h3>
-                      <p className={`${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-                        Add your first seed phrase to get started
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                      {vaultData.seeds.map((seed) => (
-                        <SeedCard
-                          key={seed.id}
-                          seed={seed}
-                          onDelete={() => handleDeleteSeed(seed.id)}
-                          darkMode={darkMode}
-                          onCopyFeedback={(message) => showTooltip(message, 'success')}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {activeTab === 'security' && <SecurityFeatures darkMode={darkMode} />}
-              {activeTab === 'faq' && <FAQ darkMode={darkMode} />}
+          {/* Tab Navigation */}
+          <div className="flex justify-center mb-8">
+            <div className="flex space-x-2 p-2 rounded-2xl backdrop-blur-sm bg-white/10 border border-white/20">
+              <TabButton
+                active={activeTab === 'vault'}
+                onClick={() => setActiveTab('vault')}
+                darkMode={darkMode}
+              >
+                My Vault
+              </TabButton>
+              <TabButton
+                active={activeTab === 'security'}
+                onClick={() => setActiveTab('security')}
+                darkMode={darkMode}
+              >
+                Security
+              </TabButton>
+              <TabButton
+                active={activeTab === 'faq'}
+                onClick={() => setActiveTab('faq')}
+                darkMode={darkMode}
+              >
+                FAQ
+              </TabButton>
             </div>
           </div>
+
+          {/* Tab Content */}
+          {activeTab === 'vault' && (
+            <div className="space-y-6">
+              {/* Add Seed Section */}
+              <div className={`backdrop-blur-sm rounded-2xl p-6 shadow-xl border ${
+                darkMode 
+                  ? 'bg-gray-800/80 border-gray-700/20' 
+                  : 'bg-white/80 border-white/20'
+              }`}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className={`text-xl font-bold ${darkMode ? 'text-gray-200' : 'text-gray-800'}`}>
+                    Add New Seed Phrase
+                  </h3>
+                  <button
+                    onClick={() => setShowAddSeed(!showAddSeed)}
+                    className={`p-2 rounded-lg transition-colors ${
+                      darkMode 
+                        ? 'bg-purple-600 text-white hover:bg-purple-700' 
+                        : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                    }`}
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {showAddSeed && (
+                  <div className="space-y-4">
+                    <FloatingInput
+                      id="seedName"
+                      label="Wallet Name (Optional)"
+                      value={newSeedName}
+                      onChange={setNewSeedName}
+                      placeholder="e.g., MetaMask Wallet"
+                      darkMode={darkMode}
+                    />
+                    <FloatingInput
+                      id="seedPhrase"
+                      label="Seed Phrase"
+                      value={newSeed}
+                      onChange={setNewSeed}
+                      placeholder="Enter your 12 or 24 word seed phrase"
+                      required
+                      darkMode={darkMode}
+                    />
+                    <div className="flex space-x-3">
+                      <ActionButton
+                        onClick={() => setShowAddSeed(false)}
+                        variant="secondary"
+                        darkMode={darkMode}
+                        className="flex-1"
+                      >
+                        Cancel
+                      </ActionButton>
+                      <ActionButton
+                        onClick={handleAddSeed}
+                        disabled={!newSeed.trim()}
+                        darkMode={darkMode}
+                        className="flex-1"
+                      >
+                        Add Seed
+                      </ActionButton>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Seeds Grid */}
+              {vaultData.seeds.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {vaultData.seeds.map((seed) => (
+                    <SeedCard
+                      key={seed.id}
+                      seed={seed}
+                      onDelete={() => handleDeleteSeed(seed.id)}
+                      darkMode={darkMode}
+                      onCopyFeedback={(message) => showTooltip(message, 'success')}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className={`text-center py-12 backdrop-blur-sm rounded-2xl border ${
+                  darkMode 
+                    ? 'bg-gray-800/50 border-gray-700/20 text-gray-400' 
+                    : 'bg-white/50 border-white/20 text-gray-500'
+                }`}>
+                  <Shield className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg">No seed phrases stored yet</p>
+                  <p className="text-sm mt-2">Add your first seed phrase to get started</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'security' && (
+            <SecurityFeatures darkMode={darkMode} />
+          )}
+
+          {activeTab === 'faq' && (
+            <FAQ darkMode={darkMode} />
+          )}
 
           <SocialLinks 
             darkMode={darkMode} 
@@ -531,6 +515,7 @@ function App() {
     );
   }
 
+  // Security verification screen
   if (showSecurityVerification) {
     return (
       <div className={`min-h-screen flex items-center justify-center p-4 transition-colors duration-300 ${
@@ -601,248 +586,279 @@ function App() {
             </ActionButton>
           </div>
         </div>
-      <div className="w-full max-w-md mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <Shield className={`w-12 h-12 mr-3 ${
-              darkMode ? 'text-purple-400' : 'text-indigo-600'
-            }`} />
-            <div>
-              <h1 className={`text-3xl font-bold ${
-                darkMode ? 'text-gray-200' : 'text-gray-800'
+      </div>
+    );
+  }
+
+  // Main login/register screen
+  return (
+    <div className={`min-h-screen p-4 transition-colors duration-300 ${
+      darkMode 
+        ? 'bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900' 
+        : 'bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50'
+    }`}>
+      <div className="max-w-7xl mx-auto">
+        {/* Top section: Left branding + form, Right security features */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 mb-16">
+          {/* Left side - Branding and Auth Form */}
+          <div className="space-y-8">
+            {/* Branding */}
+            <div className="text-center lg:text-left">
+              <div className="flex items-center justify-center lg:justify-start mb-6">
+                <Shield className={`w-16 h-16 mr-4 ${
+                  darkMode ? 'text-purple-400' : 'text-indigo-600'
+                }`} />
+                <div>
+                  <h1 className={`text-5xl font-bold ${
+                    darkMode ? 'text-gray-200' : 'text-gray-800'
+                  }`}>
+                    VaultSeed
+                  </h1>
+                  <p className={`text-lg ${
+                    darkMode ? 'text-purple-400' : 'text-indigo-600'
+                  }`}>
+                    Secure Seed Phrase Manager
+                  </p>
+                </div>
+              </div>
+              
+              <p className={`text-xl mb-8 ${
+                darkMode ? 'text-gray-300' : 'text-gray-600'
               }`}>
-                VaultSeed
-              </h1>
-              <p className={`text-sm ${
-                darkMode ? 'text-purple-400' : 'text-indigo-600'
-              }`}>
-                Secure Seed Phrase Manager
+                Enterprise-grade encryption for your crypto seed phrases with zero-knowledge architecture
               </p>
+              
+              <div className="flex flex-wrap gap-6 justify-center lg:justify-start mb-8">
+                <div className={`flex items-center ${
+                  darkMode ? 'text-gray-400' : 'text-gray-600'
+                }`}>
+                  <Shield className="w-5 h-5 mr-2 text-green-500" />
+                  AES-256 Encryption
+                </div>
+                <div className={`flex items-center ${
+                  darkMode ? 'text-gray-400' : 'text-gray-600'
+                }`}>
+                  <Eye className="w-5 h-5 mr-2 text-green-500" />
+                  Zero-Knowledge
+                </div>
+                <div className={`flex items-center ${
+                  darkMode ? 'text-gray-400' : 'text-gray-600'
+                }`}>
+                  <Github className="w-5 h-5 mr-2 text-green-500" />
+                  Open Source
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center lg:justify-start space-x-4 mb-8">
+                <a
+                  href="https://github.com/vaultseed/vaultseedv2"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors ${
+                    darkMode 
+                      ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <Github className="w-4 h-4" />
+                  <span>View Source</span>
+                </a>
+                <button
+                  onClick={() => setDarkMode(!darkMode)}
+                  className={`p-2 rounded-lg transition-colors ${
+                    darkMode 
+                      ? 'bg-gray-800 text-yellow-400 hover:bg-gray-700' 
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}
+                >
+                  {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+                </button>
+              </div>
             </div>
-          </div>
-          
-          <p className={`text-lg mb-6 ${
-            darkMode ? 'text-gray-300' : 'text-gray-600'
-          }`}>
-            Enterprise-grade encryption for your crypto seed phrases
-          </p>
-          
-          <div className="flex items-center justify-center space-x-4 mb-6">
-            <a
-              href="https://github.com/vaultseed/vaultseedv2"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg transition-colors text-sm ${
-                darkMode 
-                  ? 'bg-gray-800 text-gray-300 hover:bg-gray-700' 
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              <Github className="w-4 h-4" />
-              <span>View Source</span>
-            </a>
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className={`p-2 rounded-lg transition-colors ${
-                darkMode 
-                  ? 'bg-gray-800 text-yellow-400 hover:bg-gray-700' 
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
-            </button>
-          </div>
-        </div>
 
-        {/* Auth Form */}
-        <div className={`w-full backdrop-blur-sm rounded-2xl p-6 sm:p-8 shadow-2xl border transition-all duration-300 mb-8 ${
-          darkMode ? 'bg-gray-800/90 border-gray-700/30' : 'bg-white/90 border-white/30'
-        }`}>
-          
-          {/* Tab buttons */}
-          <div className="flex mb-6 sm:mb-8">
-            <button
-              onClick={() => switchMode(true)}
-              className={`flex-1 py-3 px-4 text-center font-semibold transition-all duration-200 rounded-l-xl ${
-                isLogin
-                  ? darkMode
-                    ? 'bg-gray-700 text-purple-400 border-b-2 border-purple-400'
-                    : 'bg-gray-50 text-indigo-600 border-b-2 border-indigo-600'
-                  : darkMode
-                    ? 'text-gray-400 hover:text-gray-200'
-                    : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Login
-            </button>
-            <button
-              onClick={() => switchMode(false)}
-              className={`flex-1 py-3 px-4 text-center font-semibold transition-all duration-200 rounded-r-xl ${
-                !isLogin
-                  ? darkMode
-                    ? 'bg-gray-700 text-purple-400 border-b-2 border-purple-400'
-                    : 'bg-gray-50 text-indigo-600 border-b-2 border-indigo-600'
-                  : darkMode
-                    ? 'text-gray-400 hover:text-gray-200'
-                    : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Register
-            </button>
-          </div>
+            {/* Auth Form */}
+            <div className={`backdrop-blur-sm rounded-2xl p-8 shadow-2xl border transition-all duration-300 ${
+              darkMode ? 'bg-gray-800/90 border-gray-700/30' : 'bg-white/90 border-white/30'
+            }`}>
+              
+              {/* Tab buttons */}
+              <div className="flex mb-8">
+                <button
+                  onClick={() => switchMode(true)}
+                  className={`flex-1 py-3 px-4 text-center font-semibold transition-all duration-200 rounded-l-xl ${
+                    isLogin
+                      ? darkMode
+                        ? 'bg-gray-700 text-purple-400 border-b-2 border-purple-400'
+                        : 'bg-gray-50 text-indigo-600 border-b-2 border-indigo-600'
+                      : darkMode
+                        ? 'text-gray-400 hover:text-gray-200'
+                        : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => switchMode(false)}
+                  className={`flex-1 py-3 px-4 text-center font-semibold transition-all duration-200 rounded-r-xl ${
+                    !isLogin
+                      ? darkMode
+                        ? 'bg-gray-700 text-purple-400 border-b-2 border-purple-400'
+                        : 'bg-gray-50 text-indigo-600 border-b-2 border-indigo-600'
+                      : darkMode
+                        ? 'text-gray-400 hover:text-gray-200'
+                        : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  Register
+                </button>
+              </div>
 
-          {/* Form content */}
-          <div className={isLogin ? 'space-y-4' : 'space-y-6'}>
-            <FloatingInput
-              id="email"
-              label="Email"
-              type="email"
-              value={email}
-              onChange={(value) => {
-                setEmail(value);
-                setError('');
-              }}
-              placeholder="Enter your email"
-              required
-              darkMode={darkMode}
-            />
-
-            <FloatingInput
-              id="password"
-              label="Password"
-              value={password}
-              onChange={(value) => {
-                setPassword(value);
-                setError('');
-              }}
-              placeholder="Enter your password"
-              isPassword
-              required
-              darkMode={darkMode}
-              showPasswordStrength={!isLogin}
-            />
-
-            {!isLogin && (
-              <>
+              {/* Form content */}
+              <div className="space-y-6">
                 <FloatingInput
-                  id="confirmPassword"
-                  label="Confirm Password"
-                  value={confirmPassword}
+                  id="email"
+                  label="Email"
+                  type="email"
+                  value={email}
                   onChange={(value) => {
-                    setConfirmPassword(value);
+                    setEmail(value);
                     setError('');
                   }}
-                  placeholder="Confirm your password"
-                  isPassword
+                  placeholder="Enter your email"
                   required
                   darkMode={darkMode}
                 />
 
-                <div className={`p-4 rounded-lg border ${
-                  darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
-                }`}>
-                  <h4 className={`font-semibold mb-3 ${
-                    darkMode ? 'text-gray-200' : 'text-gray-800'
-                  }`}>
-                    Security Questions
-                  </h4>
-                  <p className={`text-sm mb-4 ${
-                    darkMode ? 'text-gray-400' : 'text-gray-600'
-                  }`}>
-                    These are required to access your vault in the future.
+                <FloatingInput
+                  id="password"
+                  label="Password"
+                  value={password}
+                  onChange={(value) => {
+                    setPassword(value);
+                    setError('');
+                  }}
+                  placeholder="Enter your password"
+                  isPassword
+                  required
+                  darkMode={darkMode}
+                  showPasswordStrength={!isLogin}
+                />
+
+                {!isLogin && (
+                  <>
+                    <FloatingInput
+                      id="confirmPassword"
+                      label="Confirm Password"
+                      value={confirmPassword}
+                      onChange={(value) => {
+                        setConfirmPassword(value);
+                        setError('');
+                      }}
+                      placeholder="Confirm your password"
+                      isPassword
+                      required
+                      darkMode={darkMode}
+                    />
+
+                    <div className={`p-6 rounded-xl border ${
+                      darkMode ? 'bg-gray-700/50 border-gray-600' : 'bg-gray-50 border-gray-200'
+                    }`}>
+                      <h4 className={`font-semibold mb-4 ${
+                        darkMode ? 'text-gray-200' : 'text-gray-800'
+                      }`}>
+                        Security Questions
+                      </h4>
+                      <p className={`text-sm mb-6 ${
+                        darkMode ? 'text-gray-400' : 'text-gray-600'
+                      }`}>
+                        These are required to access your vault in the future.
+                      </p>
+                      
+                      <div className="space-y-4">
+                        <div>
+                          <h5 className={`text-sm font-medium mb-2 ${
+                            darkMode ? 'text-gray-300' : 'text-gray-700'
+                          }`}>
+                            What was your first pet's name? *
+                          </h5>
+                          <FloatingInput
+                            id="question1"
+                            label="Your answer"
+                            value={securityQuestions[0].answer}
+                            onChange={(value) => {
+                              const newQuestions = [...securityQuestions];
+                              newQuestions[0].question = "What was your first pet's name?";
+                              newQuestions[0].answer = value;
+                              setSecurityQuestions(newQuestions);
+                              setError('');
+                            }}
+                            placeholder="Enter your answer"
+                            required
+                            darkMode={darkMode}
+                          />
+                        </div>
+
+                        <div>
+                          <h5 className={`text-sm font-medium mb-2 ${
+                            darkMode ? 'text-gray-300' : 'text-gray-700'
+                          }`}>
+                            What city were you born in? *
+                          </h5>
+                          <FloatingInput
+                            id="question2"
+                            label="Your answer"
+                            value={securityQuestions[1].answer}
+                            onChange={(value) => {
+                              const newQuestions = [...securityQuestions];
+                              newQuestions[1].question = "What city were you born in?";
+                              newQuestions[1].answer = value;
+                              setSecurityQuestions(newQuestions);
+                              setError('');
+                            }}
+                            placeholder="Enter your answer"
+                            required
+                            darkMode={darkMode}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {error && (
+                  <p className="text-red-500 text-sm text-center flex items-center justify-center">
+                    <span className="w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center mr-2">!</span>
+                    {error}
                   </p>
-                  
-                  <div className="mb-4">
-                    <h5 className={`text-sm font-medium mb-2 ${
-                      darkMode ? 'text-gray-300' : 'text-gray-700'
-                    }`}>
-                      Security Question 1
-                    </h5>
-                    <p className={`text-sm mb-2 ${
-                      darkMode ? 'text-gray-400' : 'text-gray-600'
-                    }`}>
-                      What was your first pet's name?
-                    </p>
-                    <FloatingInput
-                      id="answer1"
-                      label="Answer 1"
-                      value={securityQuestions[0].answer}
-                      onChange={(value) => {
-                        const newQuestions = [...securityQuestions];
-                        newQuestions[0].question = "What was your first pet's name?";
-                        newQuestions[0].answer = value;
-                        setSecurityQuestions(newQuestions);
-                        setError('');
-                      }}
-                      placeholder="Your answer"
-                      required
-                      darkMode={darkMode}
-                    />
-                  </div>
+                )}
 
-                  <div className="mb-4">
-                    <h5 className={`text-sm font-medium mb-2 ${
-                      darkMode ? 'text-gray-300' : 'text-gray-700'
-                    }`}>
-                      Security Question 2
-                    </h5>
-                    <p className={`text-sm mb-2 ${
-                      darkMode ? 'text-gray-400' : 'text-gray-600'
-                    }`}>
-                      What city were you born in?
-                    </p>
-                    <FloatingInput
-                      id="answer2"
-                      label="Answer 2"
-                      value={securityQuestions[1].answer}
-                      onChange={(value) => {
-                        const newQuestions = [...securityQuestions];
-                        newQuestions[1].question = "What city were you born in?";
-                        newQuestions[1].answer = value;
-                        setSecurityQuestions(newQuestions);
-                        setError('');
-                      }}
-                      placeholder="Your answer"
-                      required
-                      darkMode={darkMode}
-                    />
-                  </div>
-                </div>
-              </>
-            )}
+                <ActionButton
+                  onClick={isLogin ? handleLogin : handleRegister}
+                  loading={loading}
+                  disabled={
+                    !email || !password || 
+                    (!isLogin && (!confirmPassword || securityQuestions.some(sq => !sq.question || !sq.answer)))
+                  }
+                  darkMode={darkMode}
+                >
+                  {isLogin ? 'Login' : 'Create Account'}
+                </ActionButton>
+              </div>
+            </div>
+          </div>
 
-            {error && (
-              <p className="text-red-500 text-sm text-center flex items-center justify-center">
-                <span className="w-4 h-4 rounded-full bg-red-500 text-white text-xs flex items-center justify-center mr-2">!</span>
-                {error}
-              </p>
-            )}
-
-            <ActionButton
-              onClick={isLogin ? handleLogin : handleRegister}
-              loading={loading}
-              disabled={
-                !email || !password || 
-                (!isLogin && (!confirmPassword || securityQuestions.some(sq => !sq.question || !sq.answer)))
-              }
-              darkMode={darkMode}
-            >
-              {isLogin ? 'Login' : 'Create Account'}
-            </ActionButton>
+          {/* Right side - Security Features */}
+          <div className="flex items-start">
+            <SecurityFeatures darkMode={darkMode} />
           </div>
         </div>
 
-        {/* Security Features */}
-        <div className="mb-8">
-          <SecurityFeatures darkMode={darkMode} />
-        </div>
-
-        {/* FAQ */}
-        <div className="mb-8">
+        {/* FAQ below both sections */}
+        <div className="mb-16">
           <FAQ darkMode={darkMode} />
         </div>
 
+        {/* Feedback at the bottom */}
         <SocialLinks 
           darkMode={darkMode} 
           onFeedbackClick={() => setShowFeedbackModal(true)} 
