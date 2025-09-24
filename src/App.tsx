@@ -219,10 +219,6 @@ function App() {
         showTooltip('Login successful!', 'success');
         await loadUserVault();
       }
-        clearFailedAttempts(email);
-        clearIPFailedAttempts();
-        showTooltip('Login successful!', 'success');
-        await loadUserVault();
     } catch (error: any) {
       console.error('Login error:', error);
       recordFailedAttempt(email);
