@@ -208,18 +208,21 @@ function App() {
       
       setCurrentUser(response.user);
       
-      // For now, skip security verification and go straight to authenticated state
-      setIsAuthenticated(true);
-      clearFailedAttempts(email);
-      clearIPFailedAttempts();
-      showTooltip('Login successful!', 'success');
-      
-      // Load vault data
-      try {
+      // SECURITY FIX: Always require security verification for existing users
+      if (response.user.securityQuestions && response.user.securityQuestions.length > 0) {
+        setStoredSecurityQuestions(response.user.securityQuestions.map((sq: any) => sq.question));
+        setShowSecurityVerification(true);
+      } else {
+        setIsAuthenticated(true);
+        clearFailedAttempts(email);
+        clearIPFailedAttempts();
+        showTooltip('Login successful!', 'success');
         await loadUserVault();
-      } catch (error) {
-        console.error('Failed to load vault:', error);
-        // Continue anyway - user can still use the app
+      }
+        clearFailedAttempts(email);
+        clearIPFailedAttempts();
+        showTooltip('Login successful!', 'success');
+        await loadUserVault();
       }
     } catch (error: any) {
       console.error('Login error:', error);
