@@ -8,10 +8,12 @@ export interface RegisterData {
   securityQuestions: Array<{ question: string; answer: string }>;
   salt: string;
 }
+
 export interface LoginData {
   email: string;
   password: string;
 }
+
 export interface SecurityVerificationData {
   email: string;
   answers: string[];
@@ -65,15 +67,16 @@ export const authAPI = {
   }
 };
 
+// Vault API calls
 export const vaultAPI = {
-  // GET should return { data: string, salt: string } or null
-  get: async (): Promise<VaultData | null> => {
+  // ✅ match backend response { encryptedData, clientSalt, lastAccessed }
+  get: async (): Promise<{ encryptedData: string; clientSalt: string } | null> => {
     return apiRequest(API_ENDPOINTS.VAULT.GET, {
       headers: { ...authHeaders() },
     });
   },
 
-  // save encryptedData & clientSalt. Server must associate vault with authenticated user.
+  // save encryptedData & clientSalt
   save: async (encryptedData: string, clientSalt: string) => {
     return apiRequest(API_ENDPOINTS.VAULT.SAVE, {
       method: 'POST',
