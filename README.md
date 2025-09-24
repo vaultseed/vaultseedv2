@@ -24,14 +24,14 @@ npm install
 npm run dev
 ```
 
-## 🚀 Deployment
+## 🚀 Deploy the app locally
 
-### Frontend (Netlify)
+### Frontend
 1. Connect your GitHub repo to Netlify
 2. Build settings: `npm run build`, publish directory: `dist`
 3. Deploy!
 
-### Backend (Railway)
+### Backend
 1. Create MongoDB Atlas database
 2. Deploy server folder to Railway
 3. Set environment variables in Railway dashboard (NOT in code!)
