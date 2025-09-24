@@ -83,30 +83,8 @@ function App() {
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode);
     saveAppSettings({ darkMode });
-  }, [darkMode]);
-
-  const showTooltip = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    setTooltip({ show: true, message, type });
-  };
-
-  const hideTooltip = () => {
-    setTooltip({ show: false, message: '', type: 'info' });
-  };
 
   const loadUserVault = async () => {
-    try {
-      const response = await vaultAPI.get();
-      if (response.encryptedData && response.clientSalt) {
-        const key = await getKey(password, response.clientSalt);
-        const decrypted = await decryptData(key, response.encryptedData);
-        if (decrypted) {
-          const data = JSON.parse(decrypted);
-          setVaultData(data);
-          showTooltip(`Loaded ${data.seeds?.length || 0} seed phrases`, 'success');
-          return;
-        }
-          setVaultData(data);
-          showTooltip(`Loaded ${data.seeds?.length || 0} seed phrases from local storage`, 'success');
         }
       }
     } catch (error) {
