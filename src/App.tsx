@@ -111,30 +111,43 @@ function App() {
       // Try server first (requires session/auth)
       if (vaultAPI && typeof vaultAPI.get === 'function') {
         try {
-          const serverVault = await vaultAPI.get();
+          const serverVault: any = await vaultAPI.get();
+          // serverVault expected shape: { data: string, salt: string } or null
           if (serverVault && serverVault.data && serverVault.salt) {
             const key = await getKey(password, serverVault.salt);
             const decrypted = await decryptData(key, serverVault.data);
-            setVaultData(JSON.parse(decrypted));
-            return;
+            if (decrypted) {
+              setVaultData(JSON.parse(decrypted));
+              return;
+            } else {
+              // couldn't decrypt server vault (maybe wrong password) -> fallback to local
+              showTooltip('Could not decrypt server vault. Trying local backup.', 'error');
+            }
           }
         } catch (error) {
           console.warn('Failed to load from server');
-          showTooltip('Could not load vault from server. Using local copy if available.', 'error');
+          // best-effort: keep going to local fallback
         }
       }
 
-      // Fallback: local storage
+      // Fallback to local storage
       const local = loadVault(email);
       if (local) {
         try {
           const key = await getKey(password, local.salt);
           const decrypted = await decryptData(key, local.data);
-          setVaultData(JSON.parse(decrypted));
+          if (decrypted) {
+            setVaultData(JSON.parse(decrypted));
+          } else {
+            showTooltip('Unable to decrypt local vault. Check your password.', 'error');
+          }
         } catch (error) {
           console.warn('Failed to decrypt local vault');
           showTooltip('Unable to decrypt local vault. Check your password.', 'error');
         }
+      } else {
+        // no vault found anywhere — start with empty vault
+        setVaultData({ seeds: [], securityQuestions: [] } as any);
       }
     } catch (error) {
       console.warn('Failed to load vault');
@@ -376,7 +389,7 @@ function App() {
   // ---------- Logout ----------
   const handleLogout = () => {
     try {
-      if (email) deleteVault(email);
+      if (email) deleteVault(email); // remove local cached vault on logout
     } catch (e) {
       // ignore
     }
