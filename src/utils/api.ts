@@ -1,3 +1,4 @@
+// src/utils/api.ts
 import { apiRequest, API_ENDPOINTS } from '../config/api';
 import { VaultData } from '../types/vault';
 
@@ -7,24 +8,20 @@ export interface RegisterData {
   securityQuestions: Array<{ question: string; answer: string }>;
   salt: string;
 }
-
 export interface LoginData {
   email: string;
   password: string;
 }
-
 export interface SecurityVerificationData {
   email: string;
   answers: string[];
 }
 
-// Helper: attach auth token
 function authHeaders() {
   const token = localStorage.getItem('vaultseed_token');
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-// ------------------ AUTH ------------------
 export const authAPI = {
   login: async (data: LoginData) => {
     const response = await apiRequest(API_ENDPOINTS.AUTH.LOGIN, {
@@ -32,7 +29,7 @@ export const authAPI = {
       body: JSON.stringify(data),
     });
 
-    if (response.token) {
+    if (response?.token) {
       localStorage.setItem('vaultseed_token', response.token);
       localStorage.setItem('vaultseed_user', JSON.stringify(response.user));
     }
@@ -46,7 +43,7 @@ export const authAPI = {
       body: JSON.stringify(data),
     });
 
-    if (response.token) {
+    if (response?.token) {
       localStorage.setItem('vaultseed_token', response.token);
       localStorage.setItem('vaultseed_user', JSON.stringify(response.user));
     }
@@ -58,23 +55,25 @@ export const authAPI = {
     return apiRequest(API_ENDPOINTS.AUTH.VERIFY_SECURITY, {
       method: 'POST',
       body: JSON.stringify(data),
+      headers: { ...authHeaders() },
     });
   },
 
   logout: () => {
     localStorage.removeItem('vaultseed_token');
     localStorage.removeItem('vaultseed_user');
-  },
+  }
 };
 
-// ------------------ VAULT ------------------
 export const vaultAPI = {
+  // GET should return { data: string, salt: string } or null
   get: async (): Promise<VaultData | null> => {
     return apiRequest(API_ENDPOINTS.VAULT.GET, {
       headers: { ...authHeaders() },
     });
   },
 
+  // save encryptedData & clientSalt. Server must associate vault with authenticated user.
   save: async (encryptedData: string, clientSalt: string) => {
     return apiRequest(API_ENDPOINTS.VAULT.SAVE, {
       method: 'POST',
@@ -97,5 +96,5 @@ export const vaultAPI = {
       method: 'DELETE',
       headers: { ...authHeaders() },
     });
-  },
+  }
 };
