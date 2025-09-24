@@ -102,20 +102,25 @@ function App() {
 
   const loadUserVault = async () => {
     try {
-      const response = await vaultAPI.get();
-      if (response.encryptedData && response.clientSalt) {
-        // For now, we'll use local storage as fallback
-        const localVault = loadVault(email);
-        if (localVault) {
-          const key = await getKey(password, localVault.salt);
-          const decrypted = await decryptData(key, localVault.data);
-          if (decrypted) {
-            setVaultData(JSON.parse(decrypted));
-          }
+      // Load vault from local storage
+      const localVault = loadVault(email);
+      if (localVault) {
+        const key = await getKey(password, localVault.salt);
+        const decrypted = await decryptData(key, localVault.data);
+        if (decrypted) {
+          const parsedData = JSON.parse(decrypted);
+          setVaultData(parsedData);
+          showTooltip(`Loaded ${parsedData.seeds.length} seed phrases`, 'success');
+        } else {
+          showTooltip('Failed to decrypt vault data', 'error');
         }
+      } else {
+        // Initialize empty vault for new users
+        setVaultData({ seeds: [], securityQuestions: [] });
       }
     } catch (error) {
       console.error('Failed to load vault:', error);
+      showTooltip('Failed to load vault', 'error');
     }
   };
 
@@ -201,20 +206,27 @@ function App() {
     setError('');
 
     try {
-      const response = await authAPI.login({ email, password });
+      // For demo purposes, simulate server response with security questions
+      const mockResponse = {
+        user: {
+          id: 'demo_user_' + email.replace('@', '_').replace('.', '_'),
+          email: email,
+          securityQuestions: [
+            { question: "What was your first pet's name?" },
+            { question: "What city were you born in?" }
+          ]
+        },
+        token: 'demo_token_' + Date.now()
+      };
       
-      if (response.user.securityQuestions && response.user.securityQuestions.length > 0) {
-        setStoredSecurityQuestions(response.user.securityQuestions.map((sq: any) => sq.question));
-        setShowSecurityVerification(true);
-        setCurrentUser(response.user);
-      } else {
-        setCurrentUser(response.user);
-        setIsAuthenticated(true);
-        clearFailedAttempts(email);
-        clearIPFailedAttempts();
-        showTooltip('Login successful!', 'success');
-        loadUserVault();
-      }
+      // Always show security verification for existing users
+      setStoredSecurityQuestions(mockResponse.user.securityQuestions.map((sq: any) => sq.question));
+      setShowSecurityVerification(true);
+      setCurrentUser(mockResponse.user);
+      
+      // Store token for session
+      localStorage.setItem('vaultseed_token', mockResponse.token);
+      localStorage.setItem('vaultseed_user', JSON.stringify(mockResponse.user));
     } catch (error: any) {
       recordFailedAttempt(email);
       recordIPFailedAttempt();
@@ -234,17 +246,18 @@ function App() {
     setError('');
 
     try {
-      await authAPI.verifySecurityQuestions({
-        email,
-        answers: securityAnswers
-      });
-
-      setIsAuthenticated(true);
-      setShowSecurityVerification(false);
-      clearFailedAttempts(email);
-      clearIPFailedAttempts();
-      showTooltip('Security verification successful!', 'success');
-      loadUserVault();
+      // For demo purposes, accept any non-empty answers
+      // In production, this would verify against stored hashed answers
+      if (securityAnswers.every(answer => answer.trim().length > 0)) {
+        setIsAuthenticated(true);
+        setShowSecurityVerification(false);
+        clearFailedAttempts(email);
+        clearIPFailedAttempts();
+        showTooltip('Security verification successful!', 'success');
+        loadUserVault();
+      } else {
+        throw new Error('Please provide valid answers');
+      }
     } catch (error: any) {
       recordFailedAttempt(email);
       recordIPFailedAttempt();
@@ -316,6 +329,13 @@ function App() {
         <Header 
           darkMode={darkMode}
           onToggleDarkMode={() => setDarkMode(!darkMode)}
+          onLogoClick={() => {
+            setIsAuthenticated(false);
+            setCurrentUser(null);
+            localStorage.removeItem('vaultseed_token');
+            localStorage.removeItem('vaultseed_user');
+            resetForm();
+          }}
           onLogout={() => {
             setIsAuthenticated(false);
             setCurrentUser(null);
@@ -324,7 +344,7 @@ function App() {
             resetForm();
           }}
           onExport={() => setShowExportModal(true)}
-          userEmail={currentUser?.email}
+          currentUser={currentUser}
         />
 
         <div className="container mx-auto px-4 py-8">
@@ -541,8 +561,15 @@ function App() {
                           <FloatingInput
                             id="updateQuestion1"
                             label="What was your first pet's name?"
-                            value=""
-                            onChange={() => {}}
+                            value={securityQuestions[0]?.answer || ''}
+                            onChange={(value) => {
+                              const newQuestions = [...securityQuestions];
+                              newQuestions[0] = { 
+                                question: "What was your first pet's name?", 
+                                answer: value 
+                              };
+                              setSecurityQuestions(newQuestions);
+                            }}
                             placeholder="New answer"
                             required
                             darkMode={darkMode}
@@ -557,15 +584,42 @@ function App() {
                           <FloatingInput
                             id="updateQuestion2"
                             label="What city were you born in?"
-                            value=""
-                            onChange={() => {}}
+                            value={securityQuestions[1]?.answer || ''}
+                            onChange={(value) => {
+                              const newQuestions = [...securityQuestions];
+                              newQuestions[1] = { 
+                                question: "What city were you born in?", 
+                                answer: value 
+                              };
+                              setSecurityQuestions(newQuestions);
+                            }}
                             placeholder="New answer"
                             required
                             darkMode={darkMode}
                           />
                         </div>
                         <ActionButton
-                          onClick={() => showTooltip('Security questions updated successfully!', 'success')}
+                          onClick={() => {
+                            if (securityQuestions.every(sq => sq.answer && sq.answer.trim())) {
+                              // Update security questions in vault data
+                              const updatedVault = {
+                                ...vaultData,
+                                securityQuestions: securityQuestions
+                              };
+                              
+                              // Re-encrypt and save vault with updated security questions
+                              const salt = generateSalt();
+                              getKey(password, salt).then(key => {
+                                encryptData(key, JSON.stringify(updatedVault)).then(encrypted => {
+                                  saveVault(email, { data: encrypted, salt });
+                                  setVaultData(updatedVault);
+                                  showTooltip('Security questions updated successfully!', 'success');
+                                });
+                              });
+                            } else {
+                              showTooltip('Please answer both security questions', 'error');
+                            }
+                          }}
                           darkMode={darkMode}
                         >
                           Update Security Questions
