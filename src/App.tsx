@@ -260,9 +260,8 @@ function App() {
       clearFailedAttempts(email);
       clearIPFailedAttempts();
       showTooltip('Security verification successful!', 'success');
-      await loadUserVault();
+      loadUserVault();
     } catch (error: any) {
-      console.error('Security verification error:', error);
       recordFailedAttempt(email);
       recordIPFailedAttempt();
       setError(error.message || 'Security verification failed');
