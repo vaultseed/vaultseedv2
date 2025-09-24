@@ -5,8 +5,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const rateLimit = require('express-rate-limit');
 const helmet = require('helmet');
-const compression = require('compression');
-const morgan = require('morgan');
 require('dotenv').config();
 
 const app = express();
