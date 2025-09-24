@@ -24,13 +24,6 @@ export interface SecurityVerificationData {
 // Authentication API calls
 export const authAPI = {
   register: async (data: RegisterData) => {
-    return apiRequest(API_ENDPOINTS.AUTH.REGISTER, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
-  },
-
-  login: async (data: LoginData) => {
     const response = await apiRequest(API_ENDPOINTS.AUTH.LOGIN, {
       method: 'POST',
       body: JSON.stringify(data),
@@ -40,6 +33,8 @@ export const authAPI = {
       localStorage.setItem('vaultseed_token', response.token);
       localStorage.setItem('vaultseed_user', JSON.stringify(response.user));
     }
+    
+    return response;
     
     return response;
   },
