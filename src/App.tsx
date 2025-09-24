@@ -20,7 +20,8 @@ import {
   clearIPFailedAttempts,
   isIPLocked,
   getAppSettings,
-  saveAppSettings
+  saveAppSettings,
+  deleteVault
 } from './utils/storage';
 import { authAPI, vaultAPI } from './utils/api';
 import { VaultData, SeedPhrase, TooltipState } from './types/vault';
@@ -49,34 +50,34 @@ function App() {
   const [securityAnswers, setSecurityAnswers] = useState(['', '']);
   const [showSecurityVerification, setShowSecurityVerification] = useState(false);
   const [storedSecurityQuestions, setStoredSecurityQuestions] = useState<string[]>([]);
-  
+
   // App state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [darkMode, setDarkMode] = useState(false);
-  
+
   // Vault state
   const [vaultData, setVaultData] = useState<VaultData>({ seeds: [], securityQuestions: [] });
   const [newSeed, setNewSeed] = useState('');
   const [newSeedName, setNewSeedName] = useState('');
   const [showAddSeed, setShowAddSeed] = useState(false);
   const [activeTab, setActiveTab] = useState<'vault' | 'security' | 'faq'>('vault');
-  
-  // Modal state
+
+  // Modal / UI state
   const [showExportModal, setShowExportModal] = useState(false);
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-  
-  // Tooltip state
   const [tooltip, setTooltip] = useState<TooltipState>({ show: false, message: '', type: 'info' });
 
   // Load settings on mount
   useEffect(() => {
-    const settings = getAppSettings();
-    setDarkMode(settings.darkMode);
-    
-    // SECURITY FIX: Don't auto-login on refresh - always require fresh authentication
+    try {
+      const settings = getAppSettings();
+      setDarkMode(Boolean(settings.darkMode));
+    } catch (e) {
+      // ignore
+    }
   }, []);
 
   // Apply dark mode to document
@@ -93,25 +94,40 @@ function App() {
     setTooltip({ show: false, message: '', type: 'info' });
   };
 
-          return;
-        }
-      } catch (error) {
-        console.error('Failed to load from server:', error);
-      }
-      
-      // Fallback to local storage
-      const localVault = loadVault(email);
-      if (localVault) {
+  // Load vault: try server first, fallback to local storage
+  const loadUserVault = async () => {
+    try {
+      // Try loading vault from server first (if backend/session available)
+      if (vaultAPI && typeof vaultAPI.get === 'function') {
         try {
-          const key = await getKey(password, localVault.salt);
-          const decrypted = await decryptData(key, localVault.data);
+          const serverVault = await vaultAPI.get();
+          if (serverVault && serverVault.data && serverVault.salt) {
+            const key = await getKey(password, serverVault.salt);
+            const decrypted = await decryptData(key, serverVault.data);
+            setVaultData(JSON.parse(decrypted));
+            return;
+          }
+        } catch (error) {
+          console.warn('Failed to load from server');
+          showTooltip('Could not load vault from server. Using local copy if available.','error');
+        }
+      }
+
+      // Fallback to local storage
+      const local = loadVault(email);
+      if (local) {
+        try {
+          const key = await getKey(password, local.salt);
+          const decrypted = await decryptData(key, local.data);
           setVaultData(JSON.parse(decrypted));
         } catch (error) {
-          console.error('Failed to decrypt local vault:', error);
+          console.warn('Failed to decrypt local vault');
+          showTooltip('Unable to decrypt local vault. Check your password.','error');
         }
       }
     } catch (error) {
-      console.error('Failed to load vault:', error);
+      console.warn('Failed to load vault');
+      showTooltip('Failed to load vault.','error');
     }
   };
 
@@ -148,7 +164,6 @@ function App() {
 
     try {
       const salt = generateSalt();
-      
       const response = await authAPI.register({
         email,
         password,
@@ -159,14 +174,13 @@ function App() {
       setCurrentUser(response.user);
       clearIPFailedAttempts();
       showTooltip('Account created successfully! Please login with your credentials.', 'success');
-      // Switch to login mode after successful registration
       setIsLogin(true);
-      setPassword(''); // Clear password for security
+      setPassword('');
       setConfirmPassword('');
       setSecurityQuestions([{ question: '', answer: '' }, { question: '', answer: '' }]);
     } catch (error: any) {
       recordIPFailedAttempt();
-      setError(error.message || 'Registration failed');
+      setError(error?.message || 'Registration failed');
     } finally {
       setLoading(false);
     }
@@ -197,10 +211,10 @@ function App() {
 
     try {
       const response = await authAPI.login({ email, password });
-      
+
       if (response && response.user) {
         setCurrentUser(response.user);
-        
+
         // Check if user has security questions
         if (response.user.securityQuestions && response.user.securityQuestions.length > 0) {
           setStoredSecurityQuestions(response.user.securityQuestions.map((sq: any) => sq.question));
@@ -216,10 +230,10 @@ function App() {
         throw new Error('Invalid response from server');
       }
     } catch (error: any) {
-      console.error('Login error:', error);
+      console.warn('Login error');
       recordFailedAttempt(email);
       recordIPFailedAttempt();
-      setError(error.message || 'Login failed');
+      setError(error?.message || 'Login failed');
     } finally {
       setLoading(false);
     }
@@ -249,7 +263,7 @@ function App() {
     } catch (error: any) {
       recordFailedAttempt(email);
       recordIPFailedAttempt();
-      setError(error.message || 'Security verification failed');
+      setError(error?.message || 'Security verification failed');
     } finally {
       setLoading(false);
     }
@@ -275,16 +289,17 @@ function App() {
 
     try {
       const salt = generateSalt();
-      const key = await getKey(password, salt);
+      const key = await getKey(password || '', salt);
       const encrypted = await encryptData(key, JSON.stringify(updatedVault));
-      
+
       // Save to server
       try {
         await vaultAPI.save(encrypted, salt);
       } catch (error) {
-        console.error('Failed to save to server:', error);
+        console.warn('Failed to save to server');
+        showTooltip('Could not save vault to server. Saved locally as backup.', 'error');
       }
-      
+
       // Save locally as backup
       saveVault(email, { data: encrypted, salt });
       setVaultData(updatedVault);
@@ -315,6 +330,15 @@ function App() {
     setError('');
   };
 
+  const logout = () => {
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    try { deleteVault(email); } catch(_) {}
+    resetForm();
+    showTooltip('Logged out', 'info');
+  };
+
+  // Render authenticated UI
   if (isAuthenticated) {
     return (
       <div className={`min-h-screen transition-colors duration-300 ${
@@ -325,13 +349,7 @@ function App() {
         <Header 
           darkMode={darkMode}
           onToggleDarkMode={() => setDarkMode(!darkMode)}
-          onLogout={() => {
-            setIsAuthenticated(false);
-            setCurrentUser(null);
-            localStorage.removeItem('vaultseed_token');
-            localStorage.removeItem('vaultseed_user');
-            resetForm();
-          }}
+          onLogout={logout}
           onExport={() => setShowExportModal(true)}
           userEmail={currentUser?.email}
         />
@@ -658,13 +676,13 @@ function App() {
                     </p>
                   </div>
                 </div>
-                
+
                 <p className={`text-lg mb-6 ${
                   darkMode ? 'text-gray-300' : 'text-gray-600'
                 }`}>
                   Enterprise-grade encryption for your crypto seed phrases with zero-knowledge architecture
                 </p>
-                
+
                 <div className="flex flex-wrap gap-4 mb-6">
                   <div className={`flex items-center text-sm ${
                     darkMode ? 'text-gray-400' : 'text-gray-600'
@@ -717,7 +735,7 @@ function App() {
               <div className={`backdrop-blur-sm rounded-2xl p-6 sm:p-8 shadow-2xl border transition-all duration-300 ${
                 darkMode ? 'bg-gray-800/90 border-gray-700/30' : 'bg-white/90 border-white/30'
               }`}>
-                
+
                 {/* Tab buttons */}
                 <div className="flex mb-6 sm:mb-8">
                   <button
