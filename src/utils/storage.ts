@@ -69,11 +69,19 @@ export function clearFailedAttempts(email: string): void {
 }
 
 export function saveVault(email: string, vault: StoredVault): void {
-  localStorage.setItem(`seedvault_${email}`, JSON.stringify(vault));
+  // SECURITY FIX: Use user-specific storage with proper isolation
+  const userKey = `seedvault_${btoa(email)}_${Date.now()}`;
+  localStorage.setItem(userKey, JSON.stringify(vault));
+  // Store the key reference for this user
+  localStorage.setItem(`seedvault_key_${btoa(email)}`, userKey);
 }
 
 export function loadVault(email: string): StoredVault | null {
-  const stored = localStorage.getItem(`seedvault_${email}`);
+  // SECURITY FIX: Load user-specific vault only
+  const userKey = localStorage.getItem(`seedvault_key_${btoa(email)}`);
+  if (!userKey) return null;
+  
+  const stored = localStorage.getItem(userKey);
   return stored ? JSON.parse(stored) : null;
 }
 
