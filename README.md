@@ -6,7 +6,7 @@
 
 - **Official Domain:** VaultSeed only operates from **vaultseed.io**
 - **Never Trust Imposters:** VaultSeed will NEVER contact you asking for passwords or seed phrases
-- **Verify Source:** Always use our official repository: https://github.com/vaultseed-io/vaultseed.io
+- **Verify Source:** Always use our official repository: https://github.com/vaultseed/vaultseedv2
 
 ## 🚀 Features
 
