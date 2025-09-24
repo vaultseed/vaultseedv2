@@ -71,23 +71,7 @@ function App() {
     const settings = getAppSettings();
     setDarkMode(settings.darkMode);
     
-    // Check if user is already logged in
-    const token = localStorage.getItem('vaultseed_token');
-    const user = localStorage.getItem('vaultseed_user');
-    
-    if (token && user) {
-      try {
-        const userData = JSON.parse(user);
-        setCurrentUser(userData);
-        setAuthStep('authenticated');
-        setEmail(userData.email);
-        loadUserVault(userData.email);
-      } catch (error) {
-        // Invalid stored data, clear it
-        localStorage.removeItem('vaultseed_token');
-        localStorage.removeItem('vaultseed_user');
-      }
-    }
+    // Don't auto-login on refresh - always require full authentication
   }, []);
 
   const loadUserVault = async (userEmail: string) => {
@@ -190,14 +174,22 @@ function App() {
     try {
       const response = await authAPI.login({ email, password });
       
-      // Store pending auth data and move to security verification
-      setPendingAuth({
-        user: response.user,
-        token: response.token,
-        password: password
-      });
+      // Check if user has security questions
+      if (response.user.securityQuestions && response.user.securityQuestions.length > 0) {
+        // Store pending auth data and move to security verification
+        setPendingAuth({
+          user: response.user,
+          token: response.token,
+          password: password
+        });
+        setAuthStep('security-verification');
+      } else {
+        // No security questions, complete login
+        setCurrentUser(response.user);
+        setAuthStep('authenticated');
+        await loadUserVaultWithPassword(email, password);
+      }
       
-      setAuthStep('security-verification');
       clearFailedAttempts(email);
       
     } catch (error: any) {
