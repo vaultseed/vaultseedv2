@@ -104,6 +104,17 @@ function App() {
           setVaultData(data);
           showTooltip(`Loaded ${data.seeds?.length || 0} seed phrases`, 'success');
           return;
+      }
+      
+      // Fallback to local storage
+      const localVault = loadVault(email);
+      if (localVault) {
+        const key = await getKey(password, localVault.salt);
+        const decrypted = await decryptData(key, localVault.data);
+        if (decrypted) {
+          const data = JSON.parse(decrypted);
+          setVaultData(data);
+          showTooltip(`Loaded ${data.seeds?.length || 0} seed phrases from local storage`, 'success');
         }
       }
       
@@ -206,20 +217,21 @@ function App() {
     try {
       const response = await authAPI.login({ email, password });
       
+      setCurrentUser(response.user);
+      
       // SECURITY FIX: Always require security verification for existing users
       if (response.user.securityQuestions && response.user.securityQuestions.length > 0) {
         setStoredSecurityQuestions(response.user.securityQuestions.map((sq: any) => sq.question));
         setShowSecurityVerification(true);
-        setCurrentUser(response.user);
       } else {
-        setCurrentUser(response.user);
         setIsAuthenticated(true);
         clearFailedAttempts(email);
         clearIPFailedAttempts();
         showTooltip('Login successful!', 'success');
-        loadUserVault();
+        await loadUserVault();
       }
     } catch (error: any) {
+      console.error('Login error:', error);
       recordFailedAttempt(email);
       recordIPFailedAttempt();
       setError(error.message || 'Login failed');
@@ -248,8 +260,9 @@ function App() {
       clearFailedAttempts(email);
       clearIPFailedAttempts();
       showTooltip('Security verification successful!', 'success');
-      loadUserVault();
+      await loadUserVault();
     } catch (error: any) {
+      console.error('Security verification error:', error);
       recordFailedAttempt(email);
       recordIPFailedAttempt();
       setError(error.message || 'Security verification failed');
